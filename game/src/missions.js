@@ -34,13 +34,20 @@ const SCRIPT = {
   ],
 };
 
+/** Seconds each dialog line stays on screen before advancing. */
+const DIALOG_LINE_SECONDS = 4.2;
+
 /**
  * Mission definitions. `pos` is the world target, `kind` tells main.js what
  * interaction completes it: reach, drive-to, survive, destroy.
  */
 export function missionList(city) {
-  const roads = city.roads;
-  const at = (i, j) => ({ x: roads[i % roads.length] + CITY.laneOffset + 40, y: roads[j % roads.length] + CITY.laneOffset + 40 });
+  const roadLines = city.roads;
+  // Anchor a mission target onto the grid: road i,j plus a small lane offset.
+  const at = (i, j) => ({
+    x: roadLines[i % roadLines.length] + CITY.laneOffset + 40,
+    y: roadLines[j % roadLines.length] + CITY.laneOffset + 40,
+  });
   return [
     {
       id: 'courier', title: 'Midnight Courier', kind: 'reach', pos: at(7, 6),
@@ -81,6 +88,7 @@ export function missionList(city) {
   ];
 }
 
+/** Build the mutable mission-state object the rest of the game mutates. */
 export function createMissions(city) {
   const list = missionList(city);
   return {
@@ -97,6 +105,7 @@ export function createMissions(city) {
   };
 }
 
+/** The active mission definition, or null when the chain is finished. */
 export function currentMission(m) {
   return m.index < m.list.length ? m.list[m.index] : null;
 }
@@ -110,7 +119,7 @@ export function startMission(m, player) {
   m.surviveProgress = 0;
   m.dialogQueue = def.dialog.slice();
   m.dialogLine = 0;
-  m.dialogTimer = 4.2;
+  m.dialogTimer = DIALOG_LINE_SECONDS;
   if (def.raiseWanted) player.wanted = Math.max(player.wanted, def.raiseWanted);
   return def;
 }
@@ -123,28 +132,30 @@ export function updateMissions(m, player, dt, events) {
     if (m.dialogTimer <= 0) {
       m.dialogQueue.shift();
       m.dialogLine += 1;
-      m.dialogTimer = 4.2;
+      m.dialogTimer = DIALOG_LINE_SECONDS;
     }
   }
 
   const def = currentMission(m);
   if (!def || m.state !== 'active') return;
 
+  // Phase: countdown. Hitting zero fails the mission; it restarts from idle
+  // (progress is not lost, main.js re-starts it after a beat).
   if (m.timer > 0) {
     m.timer -= dt;
     if (m.timer <= 0) {
-      // Timeout: mission failed, restart it (progress not lost).
       m.state = 'idle';
       events.push({ type: 'missionFail', id: def.id });
       return;
     }
   }
 
+  // Phase: objective. "reach" completes on proximity; "survive" completes
+  // once the player has stayed alive for the full duration.
   const dist = Math.hypot(def.pos.x - player.x, def.pos.y - player.y);
   if (def.kind === 'reach' && dist < MISSION.markerRadius) {
     completeMission(m, player, def, events);
   } else if (def.kind === 'survive') {
-    // Survive = simply stay alive under heat while the timer runs out.
     m.surviveProgress += dt;
     if (m.surviveProgress >= def.time) {
       completeMission(m, player, def, events);
@@ -152,6 +163,7 @@ export function updateMissions(m, player, dt, events) {
   }
 }
 
+/** Mark the mission done, pay the reward, advance the chain (or end the story). */
 function completeMission(m, player, def, events) {
   m.state = 'done';
   m.completed.push(def.id);
@@ -169,7 +181,7 @@ function completeMission(m, player, def, events) {
 export function skipDialog(m) {
   if (m.dialogQueue.length) {
     m.dialogQueue.shift();
-    m.dialogTimer = 4.2;
+    m.dialogTimer = DIALOG_LINE_SECONDS;
   }
 }
 

@@ -3,10 +3,12 @@
 // dialog lines and a large map on M.
 import { CITY, FONT, PALETTE, WORLD } from './config.js';
 
+/** Build the HUD state: big-map toggle and a fading flash-message slot. */
 export function createHud() {
   return { bigMap: false, flash: 0, flashText: '', flashColor: PALETTE.ok };
 }
 
+/** Show a centered flash message for ~3 seconds. */
 export function hudFlash(hud, text, color = PALETTE.ok) {
   hud.flash = 3;
   hud.flashText = text;
@@ -32,6 +34,7 @@ export function drawHud(ctx, hud, state, screen) {
   drawDialog(ctx, state, W, H);
   drawMoney(ctx, state, W);
 
+  // Centered flash message (mission complete, heat dropped, ...).
   if (hud.flash > 0) {
     ctx.globalAlpha = Math.min(1, hud.flash);
     ctx.fillStyle = hud.flashColor;
@@ -55,6 +58,7 @@ export function drawHud(ctx, hud, state, screen) {
   ctx.restore();
 }
 
+/** Flat translucent panel with a 1px neon edge, the HUD's base look. */
 function panel(ctx, x, y, w, h) {
   ctx.fillStyle = PALETTE.hud;
   ctx.fillRect(x, y, w, h);
@@ -64,6 +68,8 @@ function panel(ctx, x, y, w, h) {
 }
 
 // -------------------------------------------------------------- minimap
+// Small corner map by default; M opens an 80%-viewport big map with more
+// detail (building footprints, pulsing ring on the mission marker).
 function drawMinimap(ctx, hud, state, W, H) {
   const size = hud.bigMap ? Math.min(W, H) * 0.8 : 170;
   const x = hud.bigMap ? (W - size) / 2 : W - size - 16;
@@ -93,8 +99,9 @@ function drawMinimap(ctx, hud, state, W, H) {
   const def = state.missions.index < state.missions.list.length && state.missions.state === 'active'
     ? state.missions.list[state.missions.index] : null;
   if (def) {
+    const mx = x + def.pos.x * scale;
+    const my = y + def.pos.y * scale;
     ctx.fillStyle = PALETTE.marker;
-    const mx = x + def.pos.x * scale, my = y + def.pos.y * scale;
     ctx.beginPath();
     ctx.arc(mx, my, hud.bigMap ? 8 : 4, 0, Math.PI * 2);
     ctx.fill();
@@ -119,8 +126,9 @@ function drawMinimap(ctx, hud, state, W, H) {
   }
 
   // Player
+  const px = x + state.player.x * scale;
+  const py = y + state.player.y * scale;
   ctx.fillStyle = PALETTE.player;
-  const px = x + state.player.x * scale, py = y + state.player.y * scale;
   ctx.beginPath();
   ctx.arc(px, py, hud.bigMap ? 6 : 3.5, 0, Math.PI * 2);
   ctx.fill();
@@ -135,9 +143,9 @@ function drawMinimap(ctx, hud, state, W, H) {
 }
 
 // --------------------------------------------------------------- vitals
+// Health bar (green > 50%, amber > 25%, red below) and five wanted stars.
 function drawVitals(ctx, state, W) {
   panel(ctx, 16, 16, 220, 74);
-  // Health bar
   const hp = Math.max(0, state.player.health / state.player.maxHealth);
   ctx.fillStyle = '#333a4d';
   ctx.fillRect(26, 26, 200, 12);
@@ -147,14 +155,14 @@ function drawVitals(ctx, state, W) {
   ctx.font = `11px ${FONT}`;
   ctx.fillText(`HEALTH ${Math.ceil(state.player.health)}`, 26, 42);
 
-  // Wanted stars
-  for (let i = 0; i < 5; i++) {
-    ctx.fillStyle = i < state.player.wanted ? PALETTE.danger : '#333a4d';
+  for (let star = 0; star < 5; star++) {
+    ctx.fillStyle = star < state.player.wanted ? PALETTE.danger : '#333a4d';
     ctx.font = `16px ${FONT}`;
-    ctx.fillText('★', 26 + i * 20, 60);
+    ctx.fillText('★', 26 + star * 20, 60);
   }
 }
 
+// Money counter, directly under the vitals panel.
 function drawMoney(ctx, state, W) {
   panel(ctx, 16, 96, 150, 30);
   ctx.fillStyle = PALETTE.ok;
@@ -162,6 +170,8 @@ function drawMoney(ctx, state, W) {
   ctx.fillText(`$ ${state.player.money}`, 26, 104);
 }
 
+// Objective panel: mission title, one-line brief, and either the countdown
+// (reach missions) or the time-left-to-clear (survive missions).
 function drawObjective(ctx, state, W) {
   const def = state.missions.index < state.missions.list.length ? state.missions.list[state.missions.index] : null;
   if (!def) {
@@ -189,6 +199,8 @@ function drawObjective(ctx, state, W) {
   }
 }
 
+// Speedometer, shown only while driving: km/h readout (red past 180) plus a
+// thin car-damage sliver under it.
 function drawSpeedo(ctx, state, W, H) {
   const car = state.player.inCar;
   if (!car) return;
@@ -210,6 +222,7 @@ function drawSpeedo(ctx, state, W, H) {
   ctx.fillRect(W - 180, H - 26, 154 * hp, 6);
 }
 
+// Dialog box at the bottom: speaker name + current line, one at a time.
 function drawDialog(ctx, state, W, H) {
   const m = state.missions;
   const line = m.dialogQueue[0];

@@ -1,8 +1,13 @@
-// The player: walks on foot (WASD / arrows), presses F near a car to enter or
-// leave it, and carries health, a wanted level and money. The car state itself
-// lives in car.js — this module only owns the human side.
+// =============================================================================
+// Neon City: Vice Circuit — player (on-foot state & actions)
+// =============================================================================
+// The player walks on foot (WASD / arrows), presses F near a car to enter or
+// leave it, and carries health, a wanted level and money. The car state
+// itself lives in car.js — this module only owns the human side.
 import { CAR, PLAYER, WORLD } from './config.js';
 import { resolveCircle } from './city.js';
+
+// ------------------------------------------------------------- construction
 
 export function createPlayer(city, x, y) {
   return {
@@ -22,11 +27,14 @@ export function createPlayer(city, x, y) {
   };
 }
 
+// ------------------------------------------------------------------ walking
+
 /** Move on foot; collision against buildings; returns true when blocked. */
 export function walkPlayer(p, dx, dy, dt) {
   let blocked = false;
   const len = Math.hypot(dx, dy);
   if (len > 0) {
+    // Normalise input so diagonals are not faster than cardinal movement.
     const nx = dx / len, ny = dy / len;
     p.x += nx * PLAYER.speed * dt;
     p.y += ny * PLAYER.speed * dt;
@@ -39,14 +47,18 @@ export function walkPlayer(p, dx, dy, dt) {
       p.y += hit.ny * hit.depth;
       blocked = true;
     }
+    // Hard clamp to the world bounds (10px margin from every edge).
     p.x = Math.max(10, Math.min(WORLD.width - 10, p.x));
     p.y = Math.max(10, Math.min(WORLD.height - 10, p.y));
   }
   return blocked;
 }
 
+// ------------------------------------------------------------ car enter/exit
+
 /** Enter the nearest car within range; returns the car or null. */
 export function enterCar(p, cars) {
+  // Nearest-within-range scan; wrecked and already-driven cars are skipped.
   let best = null, bestD = CAR.enterRange;
   for (const c of cars) {
     if (c.driver === 'player' || c.wrecked) continue;
@@ -56,7 +68,8 @@ export function enterCar(p, cars) {
   if (best) {
     best.driver = 'player';
     p.inCar = best;
-    if (best.kind === 'patrol' && p.wanted < 2) p.wanted = Math.max(p.wanted, 2); // carjacking heat
+    // Carjacking heat: stealing a patrol car raises the wanted floor to 2.
+    if (best.kind === 'patrol' && p.wanted < 2) p.wanted = Math.max(p.wanted, 2);
     p.wanted = Math.max(p.wanted, 0);
   }
   return best;
@@ -65,7 +78,8 @@ export function enterCar(p, cars) {
 export function exitCar(p) {
   const c = p.inCar;
   if (!c) return;
-  // Step out on the left side, but never inside a building.
+  // Step out on the left side, but never inside a building: fall back to the
+  // car's centre when the ejection spot is blocked.
   let ox = p.x - Math.cos(c.angle + Math.PI / 2) * (c.w / 2 + PLAYER.radius + 4);
   let oy = p.y - Math.sin(c.angle + Math.PI / 2) * (c.w / 2 + PLAYER.radius + 4);
   const hit = resolveCircle(p.city, ox, oy, PLAYER.radius);
@@ -74,6 +88,8 @@ export function exitCar(p) {
   c.driver = null;
   p.inCar = null;
 }
+
+// -------------------------------------------------------- health & upkeep
 
 export function damagePlayer(p, amount) {
   if (p.dead) return;
@@ -90,6 +106,7 @@ export function damagePlayer(p, amount) {
 export function updatePlayer(p, dt) {
   p.fireCooldown = Math.max(0, p.fireCooldown - dt);
   p.hurtTimer = Math.max(0, p.hurtTimer - dt);
+  // Slow regen kicks in only after the post-damage delay has elapsed.
   if (p.regenTimer > 0) p.regenTimer -= dt;
   else if (p.health > 0 && p.health < p.maxHealth) {
     p.health = Math.min(p.maxHealth, p.health + PLAYER.regenRate * dt);
@@ -99,11 +116,17 @@ export function updatePlayer(p, dt) {
   p.wanted = Math.max(0, Math.min(5, p.wanted));
 }
 
+// ------------------------------------------------------------- persistence
+
 /** Data saved to localStorage between sessions. */
 export function playerSave(p) {
   return { x: Math.round(p.x), y: Math.round(p.y), health: Math.round(p.health), money: Math.round(p.money), wanted: p.wanted };
 }
 
+/**
+ * Restore from a save blob. Every field is validated independently so a
+ * partial / corrupted save degrades gracefully; health never restores below 1.
+ */
 export function playerLoad(p, data) {
   if (!data) return;
   if (Number.isFinite(data.x)) p.x = data.x;

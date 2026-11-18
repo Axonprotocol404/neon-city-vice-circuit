@@ -2,12 +2,13 @@
 // sirens, UI blips and explosion thuds. No assets — everything is synthesized.
 // The AudioContext starts on the first user gesture (browsers require it).
 export function createAudio() {
-  let ctx = null;
-  let master = null;
-  let engine = null; // { osc, gain, filter }
-  let siren = null;  // { osc, gain, lfo }
-  let enabled = true;
+  let ctx = null;      // AudioContext, created lazily on first gesture
+  let master = null;   // master gain feeding the destination
+  let engine = null;   // { osc, sub, gain, filter } — continuous engine hum
+  let siren = null;    // { osc, lfo, gain } — police siren layer
+  let enabled = true;  // goes false when WebAudio is unavailable
 
+  /** Lazily create the AudioContext and master gain. */
   function ensure() {
     if (ctx) return true;
     const AC = window.AudioContext || window.webkitAudioContext;
@@ -19,11 +20,14 @@ export function createAudio() {
     return true;
   }
 
+  /** Called on user gestures so the context leaves "suspended" state. */
   function resume() {
     if (ensure() && ctx.state === 'suspended') ctx.resume();
   }
 
   // ------------------------------------------------------------- engine
+  // Two detuned oscillators (saw + sub square) through a lowpass. Gain rises
+  // while driving; pitch and cutoff track speed.
   function startEngine() {
     if (!ensure() || engine) return;
     const osc = ctx.createOscillator();
@@ -67,6 +71,8 @@ export function createAudio() {
   }
 
   // -------------------------------------------------------------- siren
+  // Triangle osc at 700 Hz with a 1.4 Hz sine LFO (±180 Hz) on the pitch.
+  // Gain ramps in/out; teardown is deferred so the fade is audible.
   function setSiren(on) {
     if (!ensure()) return;
     if (on && !siren) {
@@ -103,6 +109,7 @@ export function createAudio() {
   }
 
   // ------------------------------------------------------------- one-shots
+  /** Decaying white-noise burst through a bandpass/lowpass/highpass filter. */
   function noiseBurst(duration, freq, gainLevel, type = 'bandpass') {
     if (!ensure()) return;
     const frames = Math.floor(ctx.sampleRate * duration);
@@ -125,6 +132,7 @@ export function createAudio() {
     src.start();
   }
 
+  /** A single oscillator note with exponential decay, optional pitch slide. */
   function tone(freq, duration, gainLevel, type = 'square', slideTo = null) {
     if (!ensure()) return;
     const osc = ctx.createOscillator();

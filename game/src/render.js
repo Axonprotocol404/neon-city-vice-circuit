@@ -10,6 +10,11 @@ export const SCREEN_PAUSED = 'paused';
 export const SCREEN_OVER = 'gameover';
 export const SCREEN_WIN = 'win';
 
+/** Padding (world units) kept around the viewport when culling draw calls. */
+const CULL_PAD = 120;
+
+/** Create the renderer: sizes the canvas for the device pixel ratio and
+ *  keeps it in sync on window resize. All drawing goes through `draw`. */
 export function createRenderer(canvas) {
   const ctx = canvas.getContext('2d');
   const resize = () => {
@@ -27,7 +32,8 @@ export function createRenderer(canvas) {
     canvas,
     draw(state, screen, time) {
       const dpr = Math.min(2, window.devicePixelRatio || 1);
-      const W = canvas.width / dpr, H = canvas.height / dpr;
+      const W = canvas.width / dpr;
+      const H = canvas.height / dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, W, H);
 
@@ -55,6 +61,9 @@ export function createRenderer(canvas) {
 }
 
 // ------------------------------------------------------------------ world
+// World pass: shake + camera transform, then layered draw calls in painter's
+// order (ground, skids, marker, buildings, cars, peds, player, bullets, sparks,
+// particles, heli), finished with a screen-space vignette.
 function drawWorld(ctx, state, W, H, time) {
   const cam = state.camera;
   const shake = state.shake > 0 ? (Math.random() - 0.5) * state.shake : 0;
@@ -63,11 +72,12 @@ function drawWorld(ctx, state, W, H, time) {
   ctx.scale(cam.zoom, cam.zoom);
   ctx.translate(-cam.x, -cam.y);
 
+  // Visible world rectangle (plus padding) used for culling.
   const view = {
-    x0: cam.x - W / (2 * cam.zoom) - 120,
-    y0: cam.y - H / (2 * cam.zoom) - 120,
-    x1: cam.x + W / (2 * cam.zoom) + 120,
-    y1: cam.y + H / (2 * cam.zoom) + 120,
+    x0: cam.x - W / (2 * cam.zoom) - CULL_PAD,
+    y0: cam.y - H / (2 * cam.zoom) - CULL_PAD,
+    x1: cam.x + W / (2 * cam.zoom) + CULL_PAD,
+    y1: cam.y + H / (2 * cam.zoom) + CULL_PAD,
   };
 
   drawGround(ctx, state.city, view);
@@ -85,6 +95,8 @@ function drawWorld(ctx, state, W, H, time) {
   drawVignette(ctx, W, H);
 }
 
+// Ground layer: asphalt, sidewalk bands along every road, parks with ponds,
+// trees, dashed lane lines and crosswalk stripes at intersections.
 function drawGround(ctx, city, view) {
   ctx.fillStyle = PALETTE.asphalt;
   ctx.fillRect(0, 0, WORLD.width, WORLD.height);
@@ -100,22 +112,22 @@ function drawGround(ctx, city, view) {
     ctx.fillRect(line - roadW / 2 - sidewalk, 0, roadW + sidewalk * 2, WORLD.height);
   }
 
-  for (const p of city.parks) {
-    if (p.x > view.x1 || p.x + p.w < view.x0 || p.y > view.y1 || p.y + p.h < view.y0) continue;
+  for (const park of city.parks) {
+    if (park.x > view.x1 || park.x + park.w < view.x0 || park.y > view.y1 || park.y + park.h < view.y0) continue;
     ctx.fillStyle = PALETTE.grass;
-    ctx.fillRect(p.x, p.y, p.w, p.h);
-    if (p.pond) {
+    ctx.fillRect(park.x, park.y, park.w, park.h);
+    if (park.pond) {
       ctx.fillStyle = PALETTE.water;
       ctx.beginPath();
-      ctx.ellipse(p.x + p.w * 0.5, p.y + p.h * 0.55, p.w * 0.22, p.h * 0.16, 0, 0, Math.PI * 2);
+      ctx.ellipse(park.x + park.w * 0.5, park.y + park.h * 0.55, park.w * 0.22, park.h * 0.16, 0, 0, Math.PI * 2);
       ctx.fill();
     }
   }
   ctx.fillStyle = PALETTE.tree;
-  for (const t of city.trees) {
-    if (t.x < view.x0 || t.x > view.x1 || t.y < view.y0 || t.y > view.y1) continue;
+  for (const tree of city.trees) {
+    if (tree.x < view.x0 || tree.x > view.x1 || tree.y < view.y0 || tree.y > view.y1) continue;
     ctx.beginPath();
-    ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2);
+    ctx.arc(tree.x, tree.y, tree.r, 0, Math.PI * 2);
     ctx.fill();
   }
 
@@ -143,26 +155,30 @@ function drawGround(ctx, city, view) {
     if (gx < view.x0 - 60 || gx > view.x1 + 60) continue;
     for (const gy of city.roads) {
       if (gy < view.y0 - 60 || gy > view.y1 + 60) continue;
-      for (let s = -3; s <= 3; s++) {
-        ctx.fillRect(gx + s * 10 - 3, gy - CITY.roadW / 2 - 4, 6, 16);
-        ctx.fillRect(gx - CITY.roadW / 2 - 4, gy + s * 10 - 3, 16, 6);
+      for (let stripe = -3; stripe <= 3; stripe++) {
+        ctx.fillRect(gx + stripe * 10 - 3, gy - CITY.roadW / 2 - 4, 6, 16);
+        ctx.fillRect(gx - CITY.roadW / 2 - 4, gy + stripe * 10 - 3, 16, 6);
       }
     }
   }
 }
 
+// Skid marks: short 6px strokes pointing along the wheel heading, batched into
+// a single path so the whole layer costs one stroke call.
 function drawSkids(ctx, skids, view) {
   ctx.strokeStyle = PALETTE.skid;
   ctx.lineWidth = 4;
   ctx.beginPath();
-  for (const s of skids) {
-    if (s.x < view.x0 || s.x > view.x1 || s.y < view.y0 || s.y > view.y1) continue;
-    ctx.moveTo(s.x, s.y);
-    ctx.lineTo(s.x + Math.cos(s.a) * 6, s.y + Math.sin(s.a) * 6);
+  for (const skid of skids) {
+    if (skid.x < view.x0 || skid.x > view.x1 || skid.y < view.y0 || skid.y > view.y1) continue;
+    ctx.moveTo(skid.x, skid.y);
+    ctx.lineTo(skid.x + Math.cos(skid.a) * 6, skid.y + Math.sin(skid.a) * 6);
   }
   ctx.stroke();
 }
 
+// Buildings with faked height: a south-east shadow, the base footprint, the
+// roof lifted north by `height`, flickering window lights and neon signs.
 function drawBuildings(ctx, city, view, time) {
   for (const b of city.buildings) {
     if (b.x > view.x1 || b.x + b.w < view.x0 || b.y > view.y1 || b.y + b.h < view.y0) continue;
@@ -184,7 +200,8 @@ function drawBuildings(ctx, city, view, time) {
 
     // Window lights on the roof face, gently flickering.
     ctx.fillStyle = 'rgba(255,214,10,0.6)';
-    const cols = Math.floor(b.w / 24), rows = Math.floor(b.h / 24);
+    const cols = Math.floor(b.w / 24);
+    const rows = Math.floor(b.h / 24);
     for (let i = 0; i < cols; i++) {
       for (let j = 0; j < rows; j++) {
         const seed = (i * 7 + j * 13 + Math.floor(b.x / 10)) % 11;
@@ -197,18 +214,19 @@ function drawBuildings(ctx, city, view, time) {
   }
 
   // Neon signs floating above facades.
-  for (const s of city.neonSigns) {
-    if (s.x < view.x0 || s.x > view.x1 || s.y < view.y0 - 40 || s.y > view.y1 + 60) continue;
+  for (const sign of city.neonSigns) {
+    if (sign.x < view.x0 || sign.x > view.x1 || sign.y < view.y0 - 40 || sign.y > view.y1 + 60) continue;
     ctx.save();
-    ctx.shadowColor = s.color;
+    ctx.shadowColor = sign.color;
     ctx.shadowBlur = 14;
-    ctx.fillStyle = s.color;
+    ctx.fillStyle = sign.color;
     ctx.font = `bold 11px ${FONT}`;
-    ctx.fillText(s.text, s.x, s.y - 10);
+    ctx.fillText(sign.text, sign.x, sign.y - 10);
     ctx.restore();
   }
 }
 
+// Objective marker: pulsing ring + disc plus a vertical glow beam above it.
 function drawMarker(ctx, state, time) {
   const m = state.missions;
   const def = m.index < m.list.length ? m.list[m.index] : null;
@@ -227,15 +245,17 @@ function drawMarker(ctx, state, time) {
   ctx.arc(def.pos.x, def.pos.y, 34 * pulse, 0, Math.PI * 2);
   ctx.fill();
   ctx.globalAlpha = 1;
-  const g = ctx.createLinearGradient(def.pos.x, def.pos.y, def.pos.x, def.pos.y - 160);
-  g.addColorStop(0, 'rgba(255,214,10,0.35)');
-  g.addColorStop(1, 'rgba(255,214,10,0)');
-  ctx.fillStyle = g;
+  const beam = ctx.createLinearGradient(def.pos.x, def.pos.y, def.pos.x, def.pos.y - 160);
+  beam.addColorStop(0, 'rgba(255,214,10,0.35)');
+  beam.addColorStop(1, 'rgba(255,214,10,0)');
+  ctx.fillStyle = beam;
   ctx.fillRect(def.pos.x - 20, def.pos.y - 160, 40, 160);
   ctx.restore();
 }
 
 // ------------------------------------------------------------------- cars
+// Roadblock cars are drawn unfiltered, then traffic + police units with culling,
+// then the player's car last so it sits on top of everything.
 function drawCars(ctx, state, view, time) {
   const list = [...state.traffic, ...state.police.units];
   for (const rb of state.police.roadblocks) {
@@ -249,11 +269,14 @@ function drawCars(ctx, state, view, time) {
   if (state.player.inCar) drawCar(ctx, state.player.inCar, time, true);
 }
 
+/** One car body: shadow, rounded hull, cabin, lights, police livery and a
+ *  marker ring for the player's ride. Exported for reuse by other tools. */
 export function drawCar(ctx, c, time, isPlayer) {
   ctx.save();
   ctx.translate(c.x, c.y);
   ctx.rotate(c.angle);
-  const w = c.w, l = c.l;
+  const w = c.w;
+  const l = c.l;
 
   ctx.fillStyle = 'rgba(0,0,0,0.4)';
   ctx.fillRect(-l / 2 + 4, -w / 2 + 5, l, w);
@@ -302,6 +325,8 @@ export function drawCar(ctx, c, time, isPlayer) {
   ctx.restore();
 }
 
+// Player on foot: shadow, body, head, swinging arms, plus a faint dashed aim
+// line toward the mouse when aiming.
 function drawPlayerOnFoot(ctx, state) {
   const p = state.player;
   if (p.inCar || p.dead) return;
@@ -324,8 +349,10 @@ function drawPlayerOnFoot(ctx, state) {
   ctx.strokeStyle = hurt;
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(-5, 1); ctx.lineTo(-8, 1 + swing);
-  ctx.moveTo(5, 1); ctx.lineTo(8, 1 - swing);
+  ctx.moveTo(-5, 1);
+  ctx.lineTo(-8, 1 + swing);
+  ctx.moveTo(5, 1);
+  ctx.lineTo(8, 1 - swing);
   ctx.stroke();
   ctx.restore();
 
@@ -343,6 +370,8 @@ function drawPlayerOnFoot(ctx, state) {
   }
 }
 
+// Pedestrians: living ones turn to face their heading (arms implied by the
+// body block), dead ones flatten into a fading grey ellipse.
 function drawPeds(ctx, peds, view) {
   for (const p of peds) {
     if (p.x < view.x0 || p.x > view.x1 || p.y < view.y0 || p.y > view.y1) continue;
@@ -371,6 +400,7 @@ function drawPeds(ctx, peds, view) {
   }
 }
 
+// Bullets: a 5px core plus a translucent streak stretched along velocity.
 function drawBullets(ctx, combat, view) {
   for (const b of combat.bullets) {
     if (b.x < view.x0 || b.x > view.x1 || b.y < view.y0 || b.y > view.y1) continue;
@@ -382,6 +412,7 @@ function drawBullets(ctx, combat, view) {
   }
 }
 
+// Impact sparks fade with their remaining life (0.3 s baseline).
 function drawSparks(ctx, combat, view) {
   for (const s of combat.sparks) {
     if (s.x < view.x0 || s.x > view.x1 || s.y < view.y0 || s.y > view.y1) continue;
@@ -392,6 +423,7 @@ function drawSparks(ctx, combat, view) {
   ctx.globalAlpha = 1;
 }
 
+// Particles: smoke puffs expand as they age, everything else stays square.
 function drawParticles(ctx, particles, view) {
   for (const p of particles) {
     if (p.x < view.x0 || p.x > view.x1 || p.y < view.y0 || p.y > view.y1) continue;
@@ -408,6 +440,8 @@ function drawParticles(ctx, particles, view) {
   ctx.globalAlpha = 1;
 }
 
+// Police helicopter: a radial spotlight cone on the ground plus a small body
+// with spinning rotor blades drawn offset up-left of the light.
 function drawHeli(ctx, police, time) {
   const h = police.heli;
   if (!h) return;
@@ -429,17 +463,20 @@ function drawHeli(ctx, police, time) {
   ctx.strokeStyle = '#8fa4c8';
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.moveTo(-24, 0); ctx.lineTo(24, 0);
-  ctx.moveTo(0, -24); ctx.lineTo(0, 24);
+  ctx.moveTo(-24, 0);
+  ctx.lineTo(24, 0);
+  ctx.moveTo(0, -24);
+  ctx.lineTo(0, 24);
   ctx.stroke();
   ctx.strokeStyle = 'rgba(200,220,255,0.5)';
-  const r = 18 + Math.sin(time * 20) * 3;
+  const rotor = 18 + Math.sin(time * 20) * 3;
   ctx.beginPath();
-  ctx.arc(0, 0, r, time * 8, time * 8 + Math.PI * 1.4);
+  ctx.arc(0, 0, rotor, time * 8, time * 8 + Math.PI * 1.4);
   ctx.stroke();
   ctx.restore();
 }
 
+// Screen-space vignette darkening the frame edges.
 function drawVignette(ctx, W, H) {
   const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75);
   g.addColorStop(0, 'rgba(0,0,0,0)');
@@ -449,6 +486,8 @@ function drawVignette(ctx, W, H) {
 }
 
 // ---------------------------------------------------------------- screens
+// Title screen: neon skyline grid, glowing logo, blinking prompt and the
+// saved-run summary.
 function drawTitle(ctx, state, W, H, time) {
   ctx.fillStyle = '#0a0c14';
   ctx.fillRect(0, 0, W, H);
@@ -501,9 +540,10 @@ function drawTitle(ctx, state, W, H, time) {
       ? `Saved run: $${save.money ?? 0}  ·  mission ${Math.min(6, (save.index ?? 0) + 1)}/6  ·  seed ${state.city ? state.city.seed : 0}`
       : `Fresh circuit  ·  seed ${state.city ? state.city.seed : 0}`,
   ];
-  lines.forEach((l, i) => ctx.fillText(l, W / 2, H * 0.78 + i * 22));
+  lines.forEach((line, i) => ctx.fillText(line, W / 2, H * 0.78 + i * 22));
 }
 
+// "WASTED" screen after the player dies.
 function drawGameOver(ctx, W, H, state) {
   ctx.fillStyle = 'rgba(10,4,10,0.78)';
   ctx.fillRect(0, 0, W, H);
@@ -519,6 +559,7 @@ function drawGameOver(ctx, W, H, state) {
   ctx.fillText('Press Enter to respawn', W / 2, H / 2 + 46);
 }
 
+// Victory screen once the six-mission chain is done.
 function drawWin(ctx, W, H, state) {
   ctx.fillStyle = 'rgba(4,10,8,0.75)';
   ctx.fillRect(0, 0, W, H);
@@ -534,6 +575,7 @@ function drawWin(ctx, W, H, state) {
 }
 
 // ---------------------------------------------------------------- helpers
+/** Trace a rounded rectangle path (caller fills or strokes it). */
 export function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
@@ -550,13 +592,15 @@ export function roundRect(ctx, x, y, w, h, r) {
 
 /** Camera follow with a zoom that pulls back as the car gains speed. */
 export function updateCamera(cam, target, car, dt) {
+  // Lead the camera slightly ahead of a fast car so the road is readable.
   const lead = car ? 60 : 0;
-  const ratio = car ? Math.min(1, Math.abs(car.speed) / 300) : 0;
-  const tx = target.x + (car ? Math.cos(car.angle) * lead * ratio : 0);
-  const ty = target.y + (car ? Math.sin(car.angle) * lead * ratio : 0);
+  const leadRatio = car ? Math.min(1, Math.abs(car.speed) / 300) : 0;
+  const tx = target.x + (car ? Math.cos(car.angle) * lead * leadRatio : 0);
+  const ty = target.y + (car ? Math.sin(car.angle) * lead * leadRatio : 0);
   const k = 1 - Math.exp(-CAMERA.lerp * dt);
   cam.x += (tx - cam.x) * k;
   cam.y += (ty - cam.y) * k;
+  // Zoom eases from zoomBase (slow) toward zoomFast (top speed).
   const speedRatio = car ? Math.min(1, Math.abs(car.speed) / CAR.types.sport.speed) : 0;
   const wantZoom = CAR.zoomBase + (CAR.zoomFast - CAR.zoomBase) * speedRatio;
   cam.zoom += (wantZoom - cam.zoom) * (1 - Math.exp(-CAMERA.zoomLerp * dt));

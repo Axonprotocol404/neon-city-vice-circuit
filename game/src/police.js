@@ -1,8 +1,18 @@
-// Police response: wanted level 1-5 drives patrol spawns, chasing cars,
-// roadblocks at 3+, and a spotlight helicopter at 4+. Evading (staying out of
-// sight long enough) drops the heat star by star.
+// =============================================================================
+// Neon City: Vice Circuit — police response
+// =============================================================================
+// Wanted level 1-5 drives patrol spawns, chasing cars, roadblocks at 3+, and
+// a spotlight helicopter at 4+. Evading (staying out of sight long enough)
+// drops the heat star by star.
+//
+// Escalation ladder (see POLICE in config.js):
+//   1-2  patrol cars chase (cap scales with level)
+//   3+   patrols open fire, roadblocks spawn ahead of the player
+//   4+   helicopter joins and counts as persistent line-of-sight
 import { CAR, CITY, PALETTE, POLICE, WORLD } from './config.js';
 import { createCar, damageCar } from './car.js';
+
+// ------------------------------------------------------------ state factory
 
 export function createPolice(city) {
   return {
@@ -17,12 +27,15 @@ export function createPolice(city) {
   };
 }
 
+// ------------------------------------------------------------- main update
+
 /** Sync the wanted level from the player and run the response each step. */
 export function updatePolice(police, player, trafficCars, bullets, dt, events) {
   police.stars = player.wanted;
 
   if (player.wanted === 0) {
-    // Stand down: units drive off (removed once far enough away).
+    // Stand down: units drive off (removed once far enough away), heavier
+    // responses are cleared immediately.
     for (const u of police.units) {
       if (Math.hypot(u.x - player.x, u.y - player.y) > 900) u.retire = true;
     }
@@ -44,7 +57,7 @@ export function updatePolice(police, player, trafficCars, bullets, dt, events) {
       }
     }
   } else {
-    police.evadeTimer = 0;
+    police.evadeTimer = 0; // being seen resets the evasion countdown
   }
 
   // --- spawn chasers up to the level cap.
@@ -67,7 +80,7 @@ export function updatePolice(police, player, trafficCars, bullets, dt, events) {
   if (player.wanted >= POLICE.heliWanted) {
     if (!police.heli) {
       police.heli = {
-        x: player.x + 400, y: player.y - 400,
+        x: player.x + 400, y: player.y - 400, // arrives from the north-east
         angle: 0, rotor: 0,
       };
       events.push({ type: 'heliIn' });
@@ -79,6 +92,8 @@ export function updatePolice(police, player, trafficCars, bullets, dt, events) {
   }
 
   // --- patrol car AI: chase, ram, and shoot at 3+.
+  // Line of sight: the helicopter always counts as sighting; any patrol
+  // within 560px of the target also does.
   police.sighted = Boolean(police.heli);
   for (const u of police.units) {
     if (u.wrecked || u.retire) continue;
@@ -86,8 +101,11 @@ export function updatePolice(police, player, trafficCars, bullets, dt, events) {
     if (Math.hypot(t.x - u.x, t.y - u.y) < 560) police.sighted = true;
     chasePlayer(u, player, dt, events);
   }
+  // Cleanup: wrecked units vanish once the player has left them behind.
   police.units = police.units.filter(u => !u.wrecked || Math.hypot(u.x - player.x, u.y - player.y) < 700);
 }
+
+// ------------------------------------------------------------- patrol spawn
 
 function spawnPatrol(police, player) {
   // Spawn on a road a few blocks away, heading roughly toward the player.
@@ -95,7 +113,7 @@ function spawnPatrol(police, player) {
   const dist = 600 + Math.random() * 400;
   let x = player.x + Math.cos(ang) * dist;
   let y = player.y + Math.sin(ang) * dist;
-  // Snap to the nearest road centre-line.
+  // Snap to the nearest road centre-line (whichever axis is closer).
   const gx = Math.round(x / CITY.cell) * CITY.cell;
   const gy = Math.round(y / CITY.cell) * CITY.cell;
   if (Math.abs(x - gx) < Math.abs(y - gy)) x = gx + CITY.laneOffset; else y = gy + CITY.laneOffset;
@@ -108,12 +126,14 @@ function spawnPatrol(police, player) {
   police.units.push(u);
 }
 
+// ---------------------------------------------------------------- pursuit AI
+
 function chasePlayer(u, player, dt, events) {
-  const target = player.inCar ?? player;
+  const target = player.inCar ?? player; // chase the car, or the body on foot
   const dx = target.x - u.x, dy = target.y - u.y;
   const dist = Math.hypot(dx, dy);
 
-  // Steer toward the target.
+  // Steer toward the target (wrapped to the shortest turn direction).
   let want = Math.atan2(dy, dx);
   let diff = want - u.angle;
   while (diff > Math.PI) diff -= Math.PI * 2;
@@ -129,7 +149,7 @@ function chasePlayer(u, player, dt, events) {
   // Drive with the shared physics.
   drivePolice(u, dt);
 
-  // Shooting at wanted 3+.
+  // Shooting at wanted 3+: timed volleys aimed straight at the target.
   if (player.wanted >= 3 && dist < POLICE.shootRange) {
     u.shootTimer -= dt;
     if (u.shootTimer <= 0) {
@@ -140,9 +160,11 @@ function chasePlayer(u, player, dt, events) {
   }
 }
 
+/** Police-only driving step: same grip model as traffic, softer wall response. */
 function drivePolice(u, dt) {
   const grip = u.grip;
   const want = u.desiredSpeed ?? CAR.types.patrol.speed;
+  // Accelerate toward desired speed, capped by accel / brakeForce per step.
   u.speed += Math.max(-CAR.brakeForce * dt, Math.min(u.accel * dt, want - u.speed));
   const speedFactor = Math.min(1, Math.abs(u.speed) / (u.maxSpeed * 0.35));
   u.angle += u.steer * u.turnRate * speedFactor * dt;
@@ -160,7 +182,7 @@ function drivePolice(u, dt) {
     const d2 = dx * dx + dy * dy;
     const r = u.l * 0.32;
     if (d2 < r * r) {
-      const d = Math.sqrt(d2) || 0.001;
+      const d = Math.sqrt(d2) || 0.001; // guard: centre exactly on the surface
       u.x += (dx / d) * (r - d);
       u.y += (dy / d) * (r - d);
       u.speed *= 0.6;
@@ -168,9 +190,11 @@ function drivePolice(u, dt) {
   }
 }
 
-// ------------------------------------------------------------- roadblocks
+// ---------------------------------------------------------------- roadblocks
+
 function updateRoadblocks(police, player, dt) {
-  // Keep at most one active roadblock ahead of the player's travel direction.
+  // Keep at most one active roadblock ahead of the player's travel direction;
+  // recycle it (and rebuild further ahead) once the player passes it by.
   const active = police.roadblocks[0];
   const target = player.inCar ?? player;
   const heading = player.inCar ? player.inCar.angle : player.angle;
@@ -180,6 +204,7 @@ function updateRoadblocks(police, player, dt) {
   if (!active || Math.hypot(active.x - target.x, active.y - target.y) > 900) {
     police.roadblocks.length = 0;
     // Snap the blocker onto the nearest road the player is heading toward.
+    // "across" = heading mostly along X, so the road crossed is vertical.
     const gx = Math.round(aheadX / CITY.cell) * CITY.cell;
     const gy = Math.round(aheadY / CITY.cell) * CITY.cell;
     const across = Math.abs(heading) < Math.PI / 4 || Math.abs(heading) > 3 * Math.PI / 4;
@@ -197,7 +222,8 @@ function updateRoadblocks(police, player, dt) {
     police.roadblocks.push(rb);
   }
 
-  // The blocker cars sit still but can be destroyed (3 hits each hp pool).
+  // The blocker cars sit still but can be destroyed (3 hits each hp pool):
+  // keep them anchored and flagged as driven so enterCar/traffic skip them.
   for (const rb of police.roadblocks) {
     for (const c of rb.cars) {
       if (!c.wrecked) {
@@ -211,6 +237,7 @@ function updateRoadblocks(police, player, dt) {
 /** Police roadblock / unit cars take damage from the player's bullets. */
 export function damagePoliceCar(police, car, amount, events) {
   if (car.blocker) {
+    // Blockers use their own small hp pool instead of car damage rules.
     car.hp -= amount;
     if (car.hp <= 0 && !car.wrecked) {
       car.wrecked = true;
@@ -222,12 +249,14 @@ export function damagePoliceCar(police, car, amount, events) {
   if (car.wrecked) events.push({ type: 'copDown' });
 }
 
-// ---------------------------------------------------------------- heli
+// ------------------------------------------------------------- helicopter
+
 function updateHeli(h, player, dt) {
   const tx = player.x, ty = player.y;
   const dx = tx - h.x, dy = ty - h.y;
-  const d = Math.hypot(dx, dy) || 1;
+  const d = Math.hypot(dx, dy) || 1; // guard: directly overhead
   const sp = POLICE.heliSpeed;
+  // Move at most `sp * dt` per step and never overshoot the player.
   h.x += (dx / d) * Math.min(sp * dt, d);
   h.y += (dy / d) * Math.min(sp * dt, d);
   h.angle = Math.atan2(dy, dx);

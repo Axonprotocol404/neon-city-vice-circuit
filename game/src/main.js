@@ -14,7 +14,9 @@ import { createHud, drawHud, hudFlash, updateHud } from './hud.js';
 import { SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE, SCREEN_WIN, createRenderer, updateCamera } from './render.js';
 import { createAudio } from './audio.js';
 
+/** Clamp the integration step so a lagging tab can't fast-forward the world. */
 const MAX_FRAME = 0.25;
+
 const params = new URLSearchParams(window.location.search);
 const shot = params.get('shot');
 const seedParam = Number.parseInt(params.get('seed') ?? '', 10);
@@ -25,10 +27,15 @@ const status = document.getElementById('status');
 const audio = createAudio();
 
 // ------------------------------------------------------------- input
+// Keyboard/mouse state. `keys` is held state, `pressed` is a one-frame edge
+// queue consumed via takePress, and the mouse tracks position + a queued click.
 function createInput() {
   const keys = new Set();
   const pressed = new Set();
-  let mouseX = 0, mouseY = 0, mouseDown = false, clickQueued = false;
+  let mouseX = 0;
+  let mouseY = 0;
+  let mouseDown = false;
+  let clickQueued = false;
   const KEYMAP = {
     KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down',
     KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right',
@@ -80,6 +87,8 @@ function createInput() {
 }
 
 // ------------------------------------------------------------- save/load
+// localStorage JSON under SAVE_KEY; every failure (private mode, quota) is
+// swallowed so the game never breaks on a read-only environment.
 function readSave() {
   try {
     const raw = window.localStorage.getItem(SAVE_KEY);
@@ -91,6 +100,8 @@ function writeSave(data) {
 }
 
 // ------------------------------------------------------------- world state
+// Build a fresh world from the seed: city, player, traffic, peds, police,
+// missions, combat, HUD and the player's starter car.
 function buildWorld() {
   const city = createCity(seed);
   const player = createPlayer(city, city.spawn.x, city.spawn.y);
@@ -129,6 +140,7 @@ function restoreSave(state, save) {
   state.camera.y = state.player.y;
 }
 
+/** Flat JSON snapshot: player stats + mission progress + the fixed seed. */
 function snapshotSave(state) {
   return {
     ...playerSave(state.player),
@@ -138,27 +150,32 @@ function snapshotSave(state) {
 }
 
 // ------------------------------------------------------------- effects
+// Skid marks: capped ring buffer (shift oldest past 400).
 function addSkid(state, x, y, angle) {
   state.skids.push({ x, y, a: angle });
   if (state.skids.length > 400) state.skids.shift();
 }
 
+// Particles: sparks (short, small) or smoke (long, big), capped at 300.
 function addParticles(state, x, y, color, count, kind = 'spark') {
   for (let i = 0; i < count; i++) {
     const a = Math.random() * Math.PI * 2;
     const s = 30 + Math.random() * 130;
     state.particles.push({
       x, y,
-      vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+      vx: Math.cos(a) * s,
+      vy: Math.sin(a) * s,
       life: kind === 'smoke' ? 1.4 : 0.4,
       maxLife: kind === 'smoke' ? 1.4 : 0.4,
       size: kind === 'smoke' ? 8 : 3,
-      color, kind,
+      color,
+      kind,
     });
   }
   if (state.particles.length > 300) state.particles.splice(0, state.particles.length - 300);
 }
 
+// Drift particles: damped velocity + shrinking life, removed when dead.
 function updateParticles(state, dt) {
   for (let i = state.particles.length - 1; i >= 0; i--) {
     const p = state.particles[i];
@@ -172,6 +189,8 @@ function updateParticles(state, dt) {
 }
 
 // ------------------------------------------------------------- events
+// Event pump: systems push typed events; here they map to audio, HUD flashes,
+// particles, screen shake, mission chaining and screen transitions.
 function handleEvents(state, events, screenCtl) {
   for (const ev of events) {
     switch (ev.type) {
@@ -228,6 +247,9 @@ function handleEvents(state, events, screenCtl) {
 }
 
 // ------------------------------------------------------------- step
+// One fixed STEP of simulation: movement/driving, shooting, key presses, then
+// every system (traffic, peds, police, combat, missions, particles, HUD,
+// audio ambience, camera), mission auto-start proximity, and death check.
 function stepWorld(state, input, events) {
   const p = state.player;
   const car = p.inCar;
@@ -353,8 +375,8 @@ function stepWorld(state, input, events) {
   return null;
 }
 
+/** A parked car near the player to keep physics alive (pushable on contact). */
 function stillNearbyCar(state, p) {
-  // Keep parked cars' physics alive (they barely move but can be pushed).
   for (const c of state.cars) {
     if (c.driver === 'player') continue;
     if (Math.hypot(c.x - p.x, c.y - p.y) < 400) return c;
@@ -363,6 +385,10 @@ function stillNearbyCar(state, p) {
 }
 
 // ------------------------------------------------------------- shot staging
+// Deterministic scenes for screenshots: ?shot=start (title), city (overview
+// driving fast), play|mission (chase with heat, patrols, heli, marker).
+const CITY_LANE = 22;
+
 function stageShot(name, state) {
   const p = state.player;
   if (name === 'start') return { screen: SCREEN_TITLE, time: 0 };
@@ -375,8 +401,10 @@ function stageShot(name, state) {
     car.y = state.city.roads[4] + 300;
     car.speed = 380;
     car.angle = -Math.PI / 2;
-    p.x = car.x; p.y = car.y;
-    state.camera.x = car.x; state.camera.y = car.y;
+    p.x = car.x;
+    p.y = car.y;
+    state.camera.x = car.x;
+    state.camera.y = car.y;
     state.camera.zoom = 0.8;
     return { screen: SCREEN_PLAY, time: 1.2 };
   }
@@ -389,9 +417,11 @@ function stageShot(name, state) {
     car.y = state.city.roads[3] + 260;
     car.speed = 240;
     car.angle = 0;
-    p.x = car.x; p.y = car.y;
+    p.x = car.x;
+    p.y = car.y;
     p.wanted = 3;
-    state.camera.x = car.x; state.camera.y = car.y;
+    state.camera.x = car.x;
+    state.camera.y = car.y;
     const first = state.missions.list[2]; // delivery: a marker across town
     state.missions.index = 2;
     state.missions.state = 'active';
@@ -410,9 +440,9 @@ function stageShot(name, state) {
   return { screen: SCREEN_PLAY, time: 0 };
 }
 
-const CITY_LANE = 22;
-
 // ------------------------------------------------------------- boot
+// Main game loop: fixed-timestep accumulator over stepWorld, autosave every
+// SAVE_INTERVAL seconds, title/gameover/pause transitions wired to input.
 function runGame() {
   const state = buildWorld();
   const input = createInput();
@@ -429,6 +459,7 @@ function runGame() {
     win: () => { screen = SCREEN_WIN; writeSave(snapshotSave(state)); },
   };
 
+  /** Title -> play: restore save if any, refill health, start audio. */
   function begin() {
     if (state.save) restoreSave(state, state.save);
     state.player.dead = false;
@@ -440,6 +471,7 @@ function runGame() {
     status.textContent = 'Playing. WASD to move, F to enter a car, follow the gold marker.';
   }
 
+  /** Gameover -> play: respawn at the clinic with 80% money kept, heat cleared. */
   function respawn() {
     state.player.dead = false;
     state.player.health = state.player.maxHealth;
@@ -510,6 +542,8 @@ function exitCarSafe(state) {
   if (state.player.inCar) exitCar(state.player);
 }
 
+// ?shot=... renders a staged scene twice then flags readiness for the
+// screenshot harness; otherwise boot the interactive game.
 if (shot) runShot();
 else runGame();
 
