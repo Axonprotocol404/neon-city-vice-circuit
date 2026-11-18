@@ -12,9 +12,19 @@
 // TUNING NOTE: any change here is a gameplay change. Values were balanced
 // against the fixed 60 Hz simulation step (see STEP below) — rescaling one
 // without the others will break the feel.
+//
+// READING ORDER: the file is laid out from the broadest scope to the
+// narrowest — world size, then the road grid, then the palette, then each
+// simulated actor (player, cars, traffic, peds, police), then the mission and
+// combat glue, and finally the persistence / camera odds and ends. Every
+// exported object is frozen by convention only: modules must treat these as
+// read-only and never mutate a shared config object at runtime.
 
 // ---------------------------------------------------------------- world size
 // Fixed square world; roads are laid out on a grid across both axes.
+// Both dimensions are deliberately equal: the city generator walks a single
+// square lattice, and the traffic / ped spawners sample x and y from the same
+// [60, width - 60] band. Making this rectangle would need spawner changes.
 export const WORLD = { width: 3200, height: 3200 };
 
 /**
@@ -34,6 +44,11 @@ export const STEP = 1 / 60;
 //   parkChance  — chance a block is a park instead of buildings
 //   buildingGap — spacing between buildings inside a block
 //   minBuilding — smallest building footprint (below this, skip the lot)
+//
+// With the defaults below the asphalt plus its sidewalks eats 2 * (45 + 18)
+// = 126 px out of every 400 px pitch, leaving a 274 px block interior for
+// buildings, parks and the gaps between them. landmarkCount caps how many of
+// the hand-placed towers in city.js are actually built.
 export const CITY = {
   cell: 400,            // distance between road centre-lines
   roadW: 90,            // full width of a road (asphalt only)
@@ -53,6 +68,12 @@ export const CITY = {
 // Flat colours plus the neon accents. The wall / wallTop arrays pair up per
 // building style index so a building's body and its fake-3D roof always
 // match — keep both arrays the same length if you ever add a style.
+//
+// The neon array doubles as the sign-colour pool in city.js and the accent
+// colour used by the HUD / markers, so its length drives sign variety across
+// the whole map. traffic is the ambient-car paint pool (excluding the named
+// sedan / sport / van / patrol colours below, which are reserved for the
+// player-spawnable kinds).
 export const PALETTE = {
   asphalt: '#14161d',
   roadLine: '#3a3f52',
@@ -84,6 +105,8 @@ export const PALETTE = {
 
 // --------------------------------------------------------------- font stack
 // Single UI font used by the HUD; canvas text drawing imports this string.
+// Kept as a plain system stack (no webfont request) so the game boots offline
+// and the deterministic screenshots do not wait on a font download.
 export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 
 // ------------------------------------------------------------------- player
@@ -91,6 +114,10 @@ export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 //   regenDelay — seconds after taking damage before slow regen kicks in
 //   regenRate  — hp per second once regenerating
 //   bullet*    — pistol projectile: speed (px/s), damage and lifetime (s)
+//
+// With bulletSpeed 900 and bulletLife 0.5 s the pistol round travels 450 px
+// before expiring, comfortably under POLICE.shootRange (260 px is the AI's
+// engagement range, not the player's). shootCooldown 0.22 s ≈ 4.5 shots/s.
 export const PLAYER = {
   speed: 175,           // on-foot px/s
   radius: 9,
@@ -119,6 +146,10 @@ export const PLAYER = {
 //   handbrakeGrip — grip multiplier with Space held (this is the drift!)
 //   enterRange    — how close on foot to enter a car
 //   zoom*         — camera zoom while driving (base vs top speed)
+//
+// The zoom pair is consumed by the camera in main.js: zoomBase while walking
+// or crawling, zoomFast (0.72) once the car approaches its top speed, so the
+// view widens exactly when you need to see further down the road.
 export const CAR = {
   types: {
     sedan:  { w: 40, l: 76, speed: 330, accel: 300, grip: 0.90, turn: 2.4, hp: 100 },
@@ -140,6 +171,10 @@ export const CAR = {
 // Ambient AI cars cruising the road grid.
 //   turnChance  — chance of turning at an intersection
 //   avoidAhead  — px of look-ahead for basic collision avoidance
+//
+// count is the number of traffic cars alive at once; traffic.js respawns a
+// wrecked or stolen car by re-picking a randomRoadPoint(), so the population
+// stays at this number for the whole session.
 export const TRAFFIC = {
   count: 26,
   speed: 150,
@@ -150,6 +185,9 @@ export const TRAFFIC = {
 // --------------------------------------------------------------------- peds
 // Ambient pedestrians, including their panic (flee) response.
 //   fleeSpeed / fleeTime — how fast and how long they run when panicked.
+//
+// hp 40 means two pistol rounds (26 dmg each) drop a pedestrian. radius is
+// the body circle used by both the render pass and the bullet hit test.
 export const PED = {
   count: 44,
   speed: 55,
@@ -166,6 +204,11 @@ export const PED = {
 //   roadblockWanted / heliWanted — thresholds where the heavier responses
 //              kick in on top of the chase cars.
 //   evadeTime — seconds out of sight needed to drop a wanted star.
+//
+// spawnDelay is the grace period between a star going up and the first unit
+// arriving, which keeps the escalation readable instead of instant.
+// chaseSpeed multiplies the patrol car's top speed (400 px/s) so cruisers can
+// just about keep pace with a flat-out sport car (470 px/s).
 export const POLICE = {
   maxUnits: { 1: 1, 2: 2, 3: 3, 4: 4, 5: 6 },
   spawnDelay: 4,
@@ -181,6 +224,9 @@ export const POLICE = {
 
 // ----------------------------------------------------------------- missions
 //   reward — payout per completed mission, indexed by mission slot order.
+//
+// markerRadius is the radius of the glowing pickup ring; missions.js checks
+// entry against this value for both the on-foot and in-car cases.
 export const MISSION = {
   markerRadius: 40,
   reward: [300, 500, 700, 1200, 1800, 3000],
@@ -188,6 +234,8 @@ export const MISSION = {
 
 // ------------------------------------------------------------------- combat
 // Cross-cutting combat rules that belong to neither the player nor the AI.
+// pedFearRadius is measured from the impact point of a shot, so a firefight
+// empties the surrounding pavement without touching peds across the street.
 export const COMBAT = {
   pedFearRadius: 260,   // peds panic when shots land this close
 };
@@ -196,6 +244,11 @@ export const COMBAT = {
 // Persistence and camera smoothing.
 //   SAVE_INTERVAL — seconds between autosaves; SAVE_KEY is the localStorage
 //   slot (changing it orphans existing saves).
+//
+// CAMERA.lerp is the positional follow rate (larger = snappier); zoomLerp is
+// the separate, slower rate used for the speed-driven zoom so the punch-in
+// and pull-out never feel abrupt. MONEY_START is the wallet for a fresh game
+// only — playerLoad() overwrites it from the save when one exists.
 export const SAVE_KEY = 'neon-city-vice-circuit.save';
 export const SAVE_INTERVAL = 5; // seconds between autosaves
 export const CAMERA = { lerp: 4.5, zoomLerp: 2.2 };

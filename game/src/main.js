@@ -8,6 +8,17 @@
 // (STEP) regardless of display refresh; rendering happens once per animation
 // frame. Systems push typed events into `events`, which handleEvents() maps
 // to audio, HUD flashes, particles, shake, mission chaining and transitions.
+//
+// MODULE WIRING: this file owns composition — it builds the state object that
+// every system reads, pumps the event queue after each fixed step, and owns
+// the only DOM access in the game (canvas#game and #status). Systems never
+// touch the DOM directly; even HUD text lives on canvas, with #status reserved
+// for screen-reader announcements (sr-only in index.html).
+//
+// SHOT HARNESS CONTRACT: with ?shot=... the game skips the interactive loop,
+// stages a scene via stageShot(), paints twice, then sets window.__shotReady
+// so an external harness can capture the canvas deterministically (?seed=N
+// controls the city; time values inside stageShot freeze animation phase).
 import { MONEY_START, PALETTE, SAVE_INTERVAL, SAVE_KEY, STEP } from './config.js';
 import { createCity, createRandom } from './city.js';
 import { createPlayer, damagePlayer, enterCar, exitCar, playerLoad, playerSave, updatePlayer, walkPlayer } from './player.js';

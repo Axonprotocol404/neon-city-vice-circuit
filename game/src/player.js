@@ -5,6 +5,12 @@
 // leave it, and carries health, a wanted level and money. The car state
 // itself lives in car.js — this module only owns the human side of the
 // simulation and never touches vehicle physics.
+//
+// DATA SHAPE: the player record is a plain object (no class) so main.js can
+// pass it around freely and the save/load pair can serialise a hand-picked
+// subset without worrying about methods. `city` is kept on the record only
+// so the walking / exit helpers can run collision queries without an extra
+// parameter on every call.
 import { CAR, PLAYER, WORLD } from './config.js';
 import { resolveCircle } from './city.js';
 

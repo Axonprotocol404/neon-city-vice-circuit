@@ -117,3 +117,8 @@ the feel of the game there, nowhere else.
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Bounty
+
+Dikembangkan untuk bounty [gta6-01](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+di make.fun.

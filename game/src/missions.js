@@ -13,6 +13,14 @@
 //
 // All characters and places are original; the SCRIPT block below is story
 // content, not tuning — treat its text as immutable.
+//
+// LIFECYCLE: createMissions() builds the state, startMission() flips a slot
+// from 'idle' to 'active' (called by main.js when the player enters the
+// marker or presses the start key), updateMissions() advances dialog, timers
+// and objectives each fixed step, and completeMission() pays out, pushes the
+// next index and — on the final mission — queues the outro dialog plus the
+// 'storyEnd' event. Failed missions drop back to 'idle' and can be started
+// again from the same marker.
 import { CITY, MISSION, WORLD } from './config.js';
 
 /** Story text (all original characters and places). */

@@ -12,6 +12,19 @@
 //
 // Units: speeds in px/s, accelerations in px/s^2, angles in radians. All
 // constants come from CAR in config.js — nothing is retuned here per car.
+//
+// STEP ORDER inside updateCar() is load-bearing and must be preserved:
+//   1. forward dynamics (throttle / drag / brake, then the speed cap)
+//   2. steering (scaled by how fast the car is actually moving)
+//   3. drift blend of (vx, vy) toward the heading, plus skid bookkeeping
+//   4. integrate position
+//   5. building bounce (one resolved impact per step)
+//   6. world clamp and damaged-engine smoke cadence
+//
+// OWNERSHIP: only this module writes a car's kinematic fields (x, y, angle,
+// speed, vx, vy, hp). Everyone else reads them or calls the exported mutators
+// (damageCar / wreckCar / bounceCars) — keeping the invariant that a car can
+// never be teleported by another subsystem mid-step.
 import { CAR, WORLD } from './config.js';
 
 // Monotonic id source; lets other modules tag/compare cars cheaply.

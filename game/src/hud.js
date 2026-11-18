@@ -8,6 +8,11 @@
 //
 // Layout is in CSS pixels: drawHud divides the canvas size by devicePixelRatio
 // because render.js applies the DPR transform before calling in.
+//
+// DRAW ORDER (back to front): minimap, vitals, objective, speedometer, dialog,
+// money, then the centred flash banner and finally the pause plate. Later
+// panels can therefore overlap earlier ones (the flash sits above money) and
+// the pause dim covers everything, which is the intent.
 import { CITY, FONT, PALETTE, WORLD } from './config.js';
 
 /** Build the HUD state: big-map toggle and a fading flash-message slot. */

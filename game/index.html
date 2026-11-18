@@ -11,6 +11,15 @@
     script       : the ES-module entry point, game/src/main.js (no bundler;
                    the browser resolves the module graph from src/ directly).
   There are no other DOM elements: every visible UI element is canvas-drawn.
+
+  Serving: the page must be fetched over http(s), not file://, because ES
+  modules are blocked by CORS on the file protocol. From the repo root:
+      python3 -m http.server 8082
+  then open http://localhost:8082/game/index.html
+
+  Deterministic screenshots use query params parsed in main.js:
+      ?seed=N                     fix the city layout
+      ?shot=start|play|city|mission  stage a frozen scene
 -->
 <html lang="en">
 <head>

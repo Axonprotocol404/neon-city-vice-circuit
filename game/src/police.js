@@ -12,6 +12,17 @@
 //
 // The module communicates with main.js purely through the `events` array:
 // policeShoot / evade / heliIn / heliGone / copDown event objects.
+//
+// SIGHTING RULES: police.sighted is recomputed every step from scratch —
+// the helicopter hovering overhead always counts, plus any live patrol within
+// 560 px of the chased target (the car if driving, the body otherwise). The
+// evade timer only accumulates while sighted is false, and being spotted
+// resets it to zero immediately, so a single glimpse stalls the cooldown.
+//
+// UNIT LIFECYCLE: spawnPatrol() creates cruisers on roads 600-1000 px out;
+// they retire (wanted 0) once > 900 px away, and wrecked hulks are dropped
+// from the list once the player is 700 px past them — both numbers generous
+// enough that units never despawn in the player's view.
 import { CAR, CITY, PALETTE, POLICE, WORLD } from './config.js';
 import { createCar, damageCar } from './car.js';
 

@@ -23,6 +23,10 @@ import { CITY, PALETTE, WORLD } from './config.js';
  *   range(a,b) — float in [a, b)
  *   int(a,b)   — inclusive integer
  *   pick(arr)  — a random array element
+ *
+ * The `s >>> 0` coercion keeps the seed in unsigned 32-bit space so that
+ * seed=2**31 and seed=-2147483648 produce the same stream; the screenshot
+ * harness relies on `?seed=N` (a plain decimal string) meaning one city.
  */
 export function createRandom(seed) {
   let s = seed >>> 0;

@@ -26,3 +26,25 @@ Lalu screenshot dari browser (frame pertama setelah load sudah deterministik).
 Seed dapat diganti (mis. `?seed=1337`) untuk memvariasikan kota; tanpa
 `?shot=` game berjalan normal. Gambar tidak pernah di-commit: yang tersimpan
 hanya dokumen indeks ini.
+
+## Catatan staging
+
+Shot di atas dihasilkan oleh `stageShot()` di `game/src/main.js`:
+
+- `start` mengembalikan layar title dengan `time` 0 sehingga prompt dan logo
+  berada di fase animasi yang sama tiap kali.
+- `city` menempatkan pemain di dalam mobil starter di `roads[4] + 60`,
+  kecepatan 380, zoom kamera 0.8 — sudut lebar yang memperlihatkan grid jalan.
+- `play` dan `mission` memakai scene yang sama (chase): pemain di
+  `roads[3] + 260`, kecepatan 240, `wanted = 3`, dua unit patroli di kiri dan
+  kanan, helikopter di utara-timur, dan misi indeks 2 (`Hot Cargo`) aktif
+  dengan dialog.
+- `runShot()` menjalankan 8 langkah fixed-step, melukis dua frame, lalu
+  menandai `window.__shotReady = true` untuk harness.
+
+## Kenapa tidak ada biner
+
+Repo sengaja tidak menyimpan file gambar: kanvas 2D bergantung pada font dan
+rasterizer sistem, sehingga biner yang di-commit akan cepat basi dibanding
+kode. Indeks ini adalah sumber kebenaran untuk shot mana yang harus ada, dan
+`shots.json` memuat pasangan nama file + query yang dipakai harness.

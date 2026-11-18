@@ -13,6 +13,16 @@
 // COORDINATES: draw() works in CSS pixels; the backing store is sized by
 // devicePixelRatio (capped at 2) and the DPR transform is applied up front.
 // All world-space drawing is culled against the camera viewport plus CULL_PAD.
+//
+// PERFORMANCE NOTES: every per-entity loop culls against the camera viewport
+// (plus CULL_PAD, or a tighter margin for cars), so only the visible slice of
+// the 3200x3200 world is ever submitted to canvas. Skids batch into one path /
+// one stroke call; the ground's lane dashes likewise. The heavy shadowBlur
+// effects (neon signs, title logo) are limited to short-lived or screen-space
+// passes so a 60 fps frame stays cheap on integrated GPUs.
+//
+// EXPORTED DRAW PIECES: drawCar and roundRect are exported because the
+// screenshot harness and other tools reuse them without the full state object.
 import { CAMERA, CAR, CITY, FONT, PALETTE, WORLD } from './config.js';
 
 export const SCREEN_TITLE = 'title';

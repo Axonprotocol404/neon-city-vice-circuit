@@ -13,6 +13,17 @@
 //
 // NOTE ON RANDOMNESS: intersection turning uses Math.random() on purpose —
 // it is dynamic gameplay, not part of the deterministic city seed.
+//
+// LANE MODEL: a traffic car knows (a) `dir`, one of the four compass strings,
+// (b) `lane`, the signed offset from the road centre-line it hugs, and
+// (c) lastGX/lastGY, the previous position used to detect that it just
+// crossed an intersection. Steering is a proportional pull toward
+// (centre-line + lane) plus a heading-error correction term.
+//
+// LIFECYCLE: createTraffic() seeds the population once; main.js keeps calling
+// updateTraffic() every fixed step. A car leaves this system forever when it
+// is wrecked or carjacked (driver !== 'traffic') — it is then just a regular
+// physics body owned by car.js / the player.
 import { CAR, CITY, TRAFFIC } from './config.js';
 import { createCar } from './car.js';
 import { createRandom, randomRoadPoint } from './city.js';

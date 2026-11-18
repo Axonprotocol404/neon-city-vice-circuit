@@ -170,3 +170,36 @@
 // unfair it is POLICE.maxUnits; if drifting feels sticky it is
 // CAR.types.*.grip; if the city feels cramped widen the grid metrics and let
 // the districts breathe.
+//
+// ----------------------------------------------------------------------------
+// Module import graph (no cycles, all relative ES modules)
+//
+//   main.js -> config, city, player, car, traffic, peds, police, missions,
+//              combat, hud, render, audio
+//   police.js -> config, car          combat.js  -> config, car, peds, police
+//   traffic.js -> config, car, city   peds.js    -> config, city
+//   player.js -> config, city         hud.js     -> config
+//   render.js -> config               city.js    -> config
+//
+// config.js imports nothing; it is the root of the dependency tree, which is
+// why every tuning number can be changed in one place without touching logic.
+//
+// ----------------------------------------------------------------------------
+// Where to look first when something feels wrong
+//
+//   - Car feels floaty        -> CAR.types[kind].grip and CAR.handbrakeGrip
+//   - Police too punishing    -> POLICE.maxUnits / spawnDelay / evadeTime
+//   - Streets feel empty      -> TRAFFIC.count and PED.count
+//   - Missions too slow       -> missions.js `time` per definition
+//   - Bullets feel weak       -> PLAYER.bulletDamage vs PED.hp
+//   - Camera swims            -> CAMERA.lerp / CAMERA.zoomLerp
+//   - City too dense          -> CITY.parkChance up, CITY.buildingGap up
+//
+// ----------------------------------------------------------------------------
+// Known constraints / non-goals
+//
+//   - Single-threaded, single-file state: no workers, no server, no netcode.
+//   - Fixed 3200x3200 square world; traffic clamps to hardcoded 3200 bounds.
+//   - No sprite assets: every visual is canvas primitives and gradients.
+//   - No mid-session seed change: ?seed=N is read once at boot.
+//   - Determinism covers city layout and staged shots, not live AI choices.

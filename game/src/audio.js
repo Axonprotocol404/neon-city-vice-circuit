@@ -9,6 +9,13 @@
 // (browsers block audio until then) via resume(). The engine hum and siren
 // are continuous layers with setTargetAtTime ramps; one-shot sounds are
 // short-lived nodes created per call and left to garbage-collect.
+//
+// MIX ARCHITECTURE: everything sums into one master gain (0.5). Continuous
+// layers (engine, siren) are kept as module-local handles and re-targeted
+// with setTargetAtTime so parameter changes never click; one-shots allocate
+// fresh nodes and let the browser GC them after stop(). All gain values are
+// deliberately conservative so stacked effects (crash + siren + engine)
+// never clip the destination.
 export function createAudio() {
   let ctx = null;      // AudioContext, created lazily on first gesture
   let master = null;   // master gain feeding the destination

@@ -11,6 +11,14 @@
 //
 // TUNNELING NOTE: bullets are fast (900 px/s), so each bullet advances in
 // BULLET_SUBSTEPS sub-steps per frame to avoid skipping over thin targets.
+//
+// WANTED ESCALATION LADDER (player bullets):
+//   traffic car hit        -> floor 1
+//   ped wounded            -> floor 2
+//   ped killed             -> floor 3
+//   police unit/roadblock  -> floor 3
+// The floors only ever raise the current level; decay back down is handled
+// exclusively by police.js (evade timer), so shooting cannot drop heat.
 import { COMBAT, PLAYER } from './config.js';
 import { damageCar } from './car.js';
 import { damagePed, scarePeds } from './peds.js';

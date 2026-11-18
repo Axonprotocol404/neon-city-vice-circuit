@@ -8,6 +8,16 @@
 //
 // Randomness note: wandering uses Math.random() — dynamic behaviour, not part
 // of the deterministic city generation; the spawn layout itself is seeded.
+//
+// STATE MACHINE (per ped, implicit):
+//   dead    — corpse; deadTimer counts down until recyclePeds() may respawn it
+//   fleeing — flee > 0; run along fleeDir with a sine wobble at fleeSpeed
+//   normal  — wander with periodic heading changes, steered back onto the
+//             sidewalk band whenever movement drifts off the pavement
+// Escalation hooks: scarePeds() is called by combat.js on every shot impact,
+// scareFromWanted() every step by police.js / main.js, damagePed() by bullets
+// and car impacts; the boolean return of damagePed is what police.js uses to
+// raise the wanted level when a pedestrian is killed.
 import { CITY, COMBAT, PED, WORLD } from './config.js';
 import { createRandom, randomSidewalkPoint } from './city.js';
 
