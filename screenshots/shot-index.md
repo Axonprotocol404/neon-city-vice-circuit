@@ -1,27 +1,28 @@
 # Screenshot index — Neon City: Vice Circuit
 
-Semua screenshot dirender runtime oleh game dari URL `?shot=start|play|city|mission`
-(dengan seed default `1337`) — TIDAK disimpan sebagai file biner di repo.
-Karena seed dan param deterministik, hasil render identik di setiap browser.
+Semua screenshot dirender runtime oleh game dari URL
+`?shot=start|play|city|mission` — TIDAK ada file gambar biner (.jpg/.png) di
+repo. Karena seed dan param deterministik (mulberry32, urutan iterasi tetap),
+hasil render identik di setiap browser. Semua shot di bawah memakai `seed=1`.
 
-Cara render ulang di lokal:
-
-    python3 -m http.server 8082
-    # open http://localhost:8082/game/index.html?shot=start&seed=1337
-    # open http://localhost:8082/game/index.html?shot=play&seed=1337
-    # open http://localhost:8082/game/index.html?shot=city&seed=1337
-    # open http://localhost:8082/game/index.html?shot=mission&seed=1337
-
-Deskripsi tiap tampilan:
+## Tabel shot (seed=1)
 
 | Param | Description |
 | --- | --- |
-| `?shot=start` | The title screen at boot: neon-noir logo, tagline and the control hints before the first input freezes the sim for capture. |
-| `?shot=play` | An in-car play view: the sport car mid-drift on a road in Ashline Market, with the HUD showing minimap + police blips, health bar, wanted stars, money and the speedometer. |
-| `?shot=city` | A wide camera flyover over the 3200x3200 map: district names, park and water blocks, landmarks and the road grid — the framing used for the full-screen map on M. |
-| `?shot=mission` | An active story mission: objective marker on the minimap, objective text, a timer, and a dialog line between Marla and Voss on screen. |
+| `?shot=start` | The title screen at boot: neon-noir logo, tagline and the control hints, with the seeded world already generated behind the overlay. |
+| `?shot=play` | An in-car play view: the player driving mid-drift on a road, live traffic and pedestrians around, and the full HUD — minimap with police blips, health bar, wanted stars, money and the speedometer. |
+| `?shot=city` | A wide camera flyover over the 3200x3200 map: the road grid, park and water blocks, landmarks and district layout of the seeded city. |
+| `?shot=mission` | An active story mission: the objective marker on the minimap and in-world, objective text, and a dialog line between Marla and Voss on screen. |
 
-Reproduce any of them locally, e.g.:
+## Cara render ulang
 
     python3 -m http.server 8082
-    # open http://localhost:8082/game/index.html?shot=play&seed=1337
+    # open http://localhost:8082/game/index.html?shot=start&seed=1
+    # open http://localhost:8082/game/index.html?shot=play&seed=1
+    # open http://localhost:8082/game/index.html?shot=city&seed=1
+    # open http://localhost:8082/game/index.html?shot=mission&seed=1
+
+Lalu screenshot dari browser (frame pertama setelah load sudah deterministik).
+Seed dapat diganti (mis. `?seed=1337`) untuk memvariasikan kota; tanpa
+`?shot=` game berjalan normal. Gambar tidak pernah di-commit: yang tersimpan
+hanya dokumen indeks ini.

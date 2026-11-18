@@ -1,35 +1,38 @@
 # Neon City: Vice Circuit
 
 [![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![rank](https://make.fun/badge/gta6-01/Axonprotocol404/neon-city-vice-circuit/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-[![reward](https://make.fun/badge/gta6-01/Axonprotocol404/neon-city-vice-circuit/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![rank](https://make.fun/badge/gta6-01/Axonprotocol404/neon-city-vice-circuit/rank.svg)](https://make.fun/badge/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
+[![reward](https://make.fun/badge/gta6-01/Axonprotocol404/neon-city-vice-circuit/reward.svg)](https://make.fun/badge/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
 A top-down neon-noir crime sandbox for the browser — drive, shoot, run from
 five stars of police heat, and climb a chain of story missions through a city
 that never sleeps. Built entirely from plain ES modules over a 2D canvas for
 the [make.fun bounty
-gta6-01](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01).
+gta6-01](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01):
+no engine, no framework, no assets, no build step — the browser resolves the
+module graph straight from `game/src/`.
 
-Neon City is a 3200x3200 procedurally generated metropolis split into six
+The city is a 3200x3200 procedurally generated metropolis split into six named
 districts — Crimson Docks, Voltrow Heights, Ashline Market, Glassrow, Sable
-Park and Neon Verge — with a road grid, parks, water and landmarks all
-derived from a single integer seed, so `?seed=N` reproduces the same city
-every time. You start on foot with a sport car parked nearby and $250: walk
-with WASD, press F to jack any car (sedan, sport, van — or a patrol car, if
-you're brave), drift with the handbrake, and shoot with the mouse when words
-fail. Traffic obeys lanes and panics under fire; pedestrians wander sidewalks
-and scatter when shots land.
+Park and Neon Verge — with a road grid, parks, water and landmarks all derived
+from a single mulberry32 PRNG seeded by `?seed=N`, so the same seed always
+reproduces the identical city, pedestrian layout and traffic layout. You start
+on foot with a car parked nearby: walk with WASD, press F to jack any car
+(sedan, sport, van — or a patrol car, if you're brave), drift with the
+handbrake, and shoot with the mouse when words fail. Traffic obeys lanes with
+look-ahead braking and panics under fire; pedestrians wander sidewalks and
+scatter when shots land.
 
 Crime has consequences: a wanted level from 1 to 5 drives patrol spawns, road
-chases, roadblocks at 3 stars, and a spotlight helicopter at 4+. Stay out of
-sight long enough and the heat cools one star at a time. A chain of six story
-missions — Midnight Courier, Kestrel Tail, Hot Cargo, the Meridian Vault
-heist, the escape to Voltrow, and the showdown at the Hallowdome — plays out
-through short dialog between the courier, Marla and the fixer Voss, with
-money rewards and a win screen at the end. Every sound is procedural
-WebAudio: engine hum that tracks RPM, tyre screech, gunshots and sirens that
-pitch with distance. No libraries, no assets, no network — just ES modules
-and a canvas.
+chases, roadblocks at 3 stars and a spotlight helicopter at 4+. Stay out of
+sight long enough and the heat cools one star at a time. A chain of six
+original story missions — courier run, chase, delivery, the Meridian Vault
+heist, the escape and the showdown at the Hallowdome — plays out through short
+dialog between the courier, Marla and the fixer Voss, with money rewards and a
+win screen at the end. Every sound is procedural WebAudio synthesized from
+oscillators and noise buffers: engine hum that tracks speed, tyre screech,
+gunshots and sirens. No libraries, no audio files, no network — just ES
+modules and a canvas.
 
 ## Play
 
@@ -50,9 +53,10 @@ Deterministic URLs:
 - `?shot=city` — staged city flyover
 - `?shot=mission` — staged active mission with marker and dialog
 
-Progress autosaves to `localStorage` (key `neon-city-vice-circuit.save`)
-every 5 seconds and restores on the next visit; in private-mode browsers the
-save write is swallowed silently and the game simply starts fresh.
+Progress autosaves to `localStorage` (key `neon-city-vice-circuit.save`) every
+few seconds and restores on the next visit; in private-mode browsers the save
+write is swallowed silently and the game simply starts fresh, never throwing
+on a blocked store.
 
 ## Controls
 
@@ -60,7 +64,7 @@ save write is swallowed silently and the game simply starts fresh.
 | --- | --- |
 | `WASD` / arrows | Walk on foot; steer and throttle in a car |
 | `F` | Enter or leave the nearest car |
-| Mouse click | Shoot toward the crosshair |
+| Mouse click | Shoot toward the crosshair (on foot and drive-by) |
 | `Space` | Handbrake (drift) |
 | `M` | Toggle the full-screen city map |
 | `Esc` | Pause menu |
@@ -71,25 +75,28 @@ save write is swallowed silently and the game simply starts fresh.
 - On-foot and vehicle gameplay with per-car physics: grip, drift, skid marks and body damage
 - Jackable traffic — sedans, sports cars, vans and police patrols
 - Wanted system 1-5: chasers, roadblocks at 3 stars, spotlight helicopter at 4+
-- Six chained story missions with dialog, timers, objective markers and money rewards
-- Procedural WebAudio: engine, screech, gunfire and distance-pitched sirens — zero audio files
+- Six chained original story missions with dialog, timers, objective markers and money rewards
+- Procedural WebAudio: engine, screech, gunfire and sirens — zero audio files
 - Minimap and full-screen map with mission markers and police blips
 - Fixed 60 Hz simulation timestep, independent of display refresh rate
-- Autosave to localStorage every 5 seconds
+- Autosave to localStorage
 
 ## Screenshots
 
-Screenshot deterministik (dirender dari ?shot=...): lihat [screenshots/shot-index.md](screenshots/shot-index.md).
+Screenshot deterministik (dirender dari `?shot=...`, gambar tidak disimpan
+sebagai biner di repo): lihat
+[screenshots/shot-index.md](screenshots/shot-index.md).
 
 ## Development
 
 Plain ES modules, no build step and no dependencies — edit a file and
-refresh. The simulation runs on a fixed timestep (`STEP = 1/60`); each system
-is a module with a `create*()` factory and an `update*()` step, and `main.js`
-owns the world object and wires the update order. Developer notes covering
-all 14 units under `game/` (index.html plus 13 modules) live in the dossier
-at [main.ts](main.ts). Almost every tuning number lives in `config.js` —
-change the feel of the game there, nowhere else.
+refresh. The simulation runs on a fixed timestep (`STEP = 1/60`) with a frame
+clamp so a lagging tab never fast-forwards the world; each system is a module
+with a `create*()` factory and an `update*()` step, and `main.js` owns the
+world object and wires the update order. Developer notes covering all 14 units
+under `game/` (index.html plus 13 modules) live in the dossier at
+[main.ts](main.ts). Almost every tuning number lives in `config.js` — change
+the feel of the game there, nowhere else.
 
 | File | Responsibility |
 | --- | --- |
@@ -98,7 +105,7 @@ change the feel of the game there, nowhere else.
 | `game/src/player.js` | On-foot movement, health/regen, wanted, money, enter/exit car |
 | `game/src/car.js` | Vehicle physics, drift, skid marks, damage, car-car collisions |
 | `game/src/traffic.js` | Ambient civilian cars: lane following, obstacle stops, panic |
-| `game/src/peds.js` | Pedestrians: wandering, fleeing, camera-relative recycling |
+| `game/src/peds.js` | Pedestrians: wandering, fleeing, recycling |
 | `game/src/police.js` | Wanted response: chasers, roadblocks, helicopter, evasion |
 | `game/src/missions.js` | Six chained story missions, dialog, rewards, timers |
 | `game/src/combat.js` | Bullets, hit resolution, feedback into health/wanted/panic |
@@ -106,12 +113,6 @@ change the feel of the game there, nowhere else.
 | `game/src/render.js` | Canvas renderer, camera, screen state machine, particles |
 | `game/src/audio.js` | Procedural WebAudio: engine, screech, shots, sirens |
 | `game/src/main.js` | Boot, input, fixed-timestep loop, save/load, `?shot`/`?seed` |
-
-`main.ts` at the repo root is the bounty submission plumbing (Node 22,
-standard library only): it copies `game/` and `screenshots/` to `/output`
-and writes `dossier.json` for the
-[make.fun](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
-grader, respecting the scorer's caps on screenshot count and size.
 
 ## License
 
