@@ -1,6 +1,13 @@
-// HUD: minimap (city blocks + mission marker + police blips), health bar,
-// wanted stars, money, objective text, speedometer while driving, mission
-// dialog lines and a large map on M.
+// =============================================================================
+// Neon City: Vice Circuit — HUD (canvas overlay UI)
+// =============================================================================
+// Minimap (city blocks + mission marker + police blips), health bar, wanted
+// stars, money, objective text, speedometer while driving, mission dialog
+// lines and a large map on M. Everything here draws into the same 2D canvas
+// context the world renderer uses — the HUD is the last layer each frame.
+//
+// Layout is in CSS pixels: drawHud divides the canvas size by devicePixelRatio
+// because render.js applies the DPR transform before calling in.
 import { CITY, FONT, PALETTE, WORLD } from './config.js';
 
 /** Build the HUD state: big-map toggle and a fading flash-message slot. */
@@ -21,6 +28,7 @@ export function updateHud(hud, dt) {
 
 /** Main draw call — ctx is already screen-sized. */
 export function drawHud(ctx, hud, state, screen) {
+  // Work in CSS pixels: the canvas backing store is scaled by devicePixelRatio.
   const W = ctx.canvas.width / (window.devicePixelRatio || 1);
   const H = ctx.canvas.height / (window.devicePixelRatio || 1);
   ctx.save();
@@ -45,6 +53,7 @@ export function drawHud(ctx, hud, state, screen) {
   }
 
   if (screen === 'paused') {
+    // Full-screen dim + PAUSED plate.
     ctx.fillStyle = 'rgba(6,8,14,0.7)';
     ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = PALETTE.text;
@@ -106,6 +115,7 @@ function drawMinimap(ctx, hud, state, W, H) {
     ctx.arc(mx, my, hud.bigMap ? 8 : 4, 0, Math.PI * 2);
     ctx.fill();
     if (hud.bigMap) {
+      // Extra highlight ring on the big map only.
       ctx.strokeStyle = PALETTE.marker;
       ctx.beginPath();
       ctx.arc(mx, my, 14, 0, Math.PI * 2);
@@ -147,6 +157,7 @@ function drawMinimap(ctx, hud, state, W, H) {
 function drawVitals(ctx, state, W) {
   panel(ctx, 16, 16, 220, 74);
   const hp = Math.max(0, state.player.health / state.player.maxHealth);
+  // Track, then the health fill with colour coding by remaining fraction.
   ctx.fillStyle = '#333a4d';
   ctx.fillRect(26, 26, 200, 12);
   ctx.fillStyle = hp > 0.5 ? PALETTE.ok : hp > 0.25 ? PALETTE.marker : PALETTE.danger;
@@ -175,6 +186,7 @@ function drawMoney(ctx, state, W) {
 function drawObjective(ctx, state, W) {
   const def = state.missions.index < state.missions.list.length ? state.missions.list[state.missions.index] : null;
   if (!def) {
+    // Chain finished: show a quiet free-roam note if anything was completed.
     if (state.missions.completed.length) {
       ctx.fillStyle = PALETTE.ok;
       ctx.font = `bold 15px ${FONT}`;
@@ -190,9 +202,11 @@ function drawObjective(ctx, state, W) {
   ctx.font = `12px ${FONT}`;
   ctx.fillText(def.brief.slice(0, 56), 26, 160);
   if (state.missions.timer > 0 && def.kind !== 'survive') {
+    // Reach mission: countdown, red when nearly expired.
     ctx.fillStyle = state.missions.timer < 20 ? PALETTE.danger : PALETTE.muted;
     ctx.fillText(`${Math.ceil(state.missions.timer)}s`, 330, 160);
   } else if (def.kind === 'survive') {
+    // Survive mission: show the time still to clear.
     const left = Math.max(0, def.time - state.missions.surviveProgress);
     ctx.fillStyle = PALETTE.muted;
     ctx.fillText(`${Math.ceil(left)}s to clear`, 240, 160);

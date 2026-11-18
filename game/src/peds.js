@@ -3,13 +3,19 @@
 // =============================================================================
 // Pedestrians wander the sidewalks, panic and flee when shots land nearby or
 // the player's wanted level is high. Can be hurt (and killed) by bullets and
-// careless drivers.
+// careless drivers. Dead bodies linger for a while, then get recycled back
+// into the world at a distant sidewalk point (recyclePeds).
+//
+// Randomness note: wandering uses Math.random() — dynamic behaviour, not part
+// of the deterministic city generation; the spawn layout itself is seeded.
 import { CITY, COMBAT, PED, WORLD } from './config.js';
 import { createRandom, randomSidewalkPoint } from './city.js';
 
 // ---------------------------------------------------------------- spawning
 
+/** Create `count` peds on random sidewalk points (seeded, deterministic). */
 export function createPeds(city, seed, count = PED.count) {
+  // Distinct xor-shifted seed so ped layout never mirrors the city seed.
   const rnd = createRandom(seed ^ 0x51f15e);
   const peds = [];
   for (let i = 0; i < count; i++) {
@@ -50,11 +56,13 @@ export function scarePeds(peds, x, y, radius = COMBAT.pedFearRadius) {
 /** High wanted level keeps peds near the player skittish. */
 export function scareFromWanted(peds, playerX, playerY, wanted) {
   if (wanted < 2) return;
+  // Fear radius grows with the wanted level.
   scarePeds(peds, playerX, playerY, 200 + wanted * 60);
 }
 
 // ------------------------------------------------------------------ damage
 
+/** Returns true when this hit killed the ped (used for wanted escalation). */
 export function damagePed(p, amount) {
   if (p.dead) return false;
   p.hp -= amount;
@@ -69,6 +77,7 @@ export function damagePed(p, amount) {
 
 // ------------------------------------------------------------------- update
 
+/** Step every ped: corpse timers, fleeing, wandering, sidewalk keeping. */
 export function updatePeds(peds, city, player, wanted, dt) {
   for (const p of peds) {
     // Corpses just tick their cleanup timer down.

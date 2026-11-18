@@ -1,6 +1,14 @@
+// =============================================================================
+// Neon City: Vice Circuit — procedural audio (WebAudio, zero assets)
+// =============================================================================
 // Procedural WebAudio: engine hum whose pitch tracks speed, gunshots, police
-// sirens, UI blips and explosion thuds. No assets — everything is synthesized.
-// The AudioContext starts on the first user gesture (browsers require it).
+// sirens, UI blips and explosion thuds. No assets — everything is synthesized
+// from oscillators and white-noise buffers.
+//
+// LIFECYCLE: the AudioContext is created lazily on the first user gesture
+// (browsers block audio until then) via resume(). The engine hum and siren
+// are continuous layers with setTargetAtTime ramps; one-shot sounds are
+// short-lived nodes created per call and left to garbage-collect.
 export function createAudio() {
   let ctx = null;      // AudioContext, created lazily on first gesture
   let master = null;   // master gain feeding the destination
@@ -54,9 +62,11 @@ export function createAudio() {
   function updateEngine(speedRatio, driving) {
     if (!engine) return;
     const t = ctx.currentTime;
+    // Gain fades in while driving, out when on foot.
     const target = driving ? 0.14 : 0;
     engine.gain.gain.setTargetAtTime(target, t, 0.15);
     if (driving) {
+      // Pitch and filter cutoff rise with speed for a natural rev feel.
       engine.osc.frequency.setTargetAtTime(45 + speedRatio * 130, t, 0.08);
       engine.sub.frequency.setTargetAtTime(22 + speedRatio * 65, t, 0.08);
       engine.filter.frequency.setTargetAtTime(280 + speedRatio * 900, t, 0.1);
@@ -115,6 +125,7 @@ export function createAudio() {
     const frames = Math.floor(ctx.sampleRate * duration);
     const buffer = ctx.createBuffer(1, frames, ctx.sampleRate);
     const data = buffer.getChannelData(0);
+    // Linear decay envelope over the whole buffer (1 - i/frames).
     for (let i = 0; i < frames; i++) {
       data[i] = (Math.random() * 2 - 1) * (1 - i / frames);
     }
@@ -148,6 +159,8 @@ export function createAudio() {
     osc.stop(ctx.currentTime + duration + 0.02);
   }
 
+  // ------------------------------------------------------------- public API
+  // One-shot sound effects. Every one is a mix of noiseBurst and/or tone.
   return {
     resume,
     startEngine,

@@ -8,7 +8,11 @@
 // Traffic cars are "lite" AI bodies: they still own the fields created by
 // car.js (speed, vx/vy, grip, ...) but run a cheaper physics step here
 // (stepCarLite) that never bounces hard off buildings — they simply stop and
-// slide clear, which reads far better for background traffic.
+// slide clear, which reads far better for background traffic. They are also
+// repossessed when the player carjacks them (driver !== 'traffic').
+//
+// NOTE ON RANDOMNESS: intersection turning uses Math.random() on purpose —
+// it is dynamic gameplay, not part of the deterministic city seed.
 import { CAR, CITY, TRAFFIC } from './config.js';
 import { createCar } from './car.js';
 import { createRandom, randomRoadPoint } from './city.js';
@@ -22,14 +26,16 @@ const LANES = [CITY.laneOffset, -CITY.laneOffset];
  * Spawn `count` traffic cars on random road lanes.
  * dir: 'v' (moving along Y, heading +/-PI/2) or 'h' (along X, heading 0/PI).
  *
- * Guard: the spawn loop is bounded by count * 10 attempts so a pathological
- * seed can never hang the game; the result may then hold fewer than `count`.
+ * GUARD: the spawn loop is bounded by count * 10 attempts so a pathological
+ * seed can never hang the game; the result may then hold fewer than `count`
+ * cars (acceptable for background traffic).
  */
 export function createTraffic(city, seed, count = TRAFFIC.count) {
+  // Distinct xor-shifted seed so traffic layout never mirrors the city seed.
   const rnd = createRandom(seed ^ 0x9e3779b9);
   const cars = [];
   const colors = ['#8d93a8', '#a8792f', '#7d4b9e', '#3f7d5c', '#a83f4b', '#5a6b8c'];
-  const kinds = ['sedan', 'sedan', 'sedan', 'van', 'sport'];
+  const kinds = ['sedan', 'sedan', 'sedan', 'van', 'sport']; // sedans dominate
   let guard = 0;
   while (cars.length < count && guard++ < count * 10) {
     const pt = randomRoadPoint(city, rnd);
@@ -99,7 +105,7 @@ export function updateTraffic(cars, city, playerCar, peds, dt) {
     }
 
     // -- Controls for this step. `desired` is the target speed the lite
-    // physics tries to reach; brake only matters above a walking pace.
+    // physics tries to reach; brake only matters above a walking pace (30).
     c.throttle = blocked ? 0 : 1;
     c.brake = blocked && Math.abs(c.speed) > 30;
     c.desired = blocked ? 0 : TRAFFIC.speed;
@@ -165,6 +171,8 @@ function angleCorrection(c) {
 function driveTowardSpeed(c, dt) {
   const want = c.desired ?? TRAFFIC.speed;
   const diff = want - c.speed;
+  // Approach the target within one step's accel/brake budget, then hand the
+  // integration to the shared lite physics (drift & building push-out).
   c.speed += clamp(diff, -CAR.brakeForce * dt, c.accel * dt);
   // Integrate using the shared physics for drift & collisions.
   c.throttle = 0; c.brake = false;

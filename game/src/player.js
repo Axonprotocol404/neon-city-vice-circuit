@@ -3,12 +3,17 @@
 // =============================================================================
 // The player walks on foot (WASD / arrows), presses F near a car to enter or
 // leave it, and carries health, a wanted level and money. The car state
-// itself lives in car.js — this module only owns the human side.
+// itself lives in car.js — this module only owns the human side of the
+// simulation and never touches vehicle physics.
 import { CAR, PLAYER, WORLD } from './config.js';
 import { resolveCircle } from './city.js';
 
 // ------------------------------------------------------------- construction
 
+/**
+ * Build the initial player record at (x, y). Money starts at 0 here and is
+ * topped up from the save by main.js (MONEY_START applies to fresh games).
+ */
 export function createPlayer(city, x, y) {
   return {
     x, y,
@@ -40,7 +45,8 @@ export function walkPlayer(p, dx, dy, dt) {
     p.y += ny * PLAYER.speed * dt;
     p.angle = Math.atan2(ny, nx);
     p.walkAnim += dt * 10;
-    // Slide along walls instead of sticking: try axes separately.
+    // Slide along walls instead of sticking: resolveCircle pushes the circle
+    // out along the hit normal, giving free wall-sliding on both axes.
     const hit = resolveCircle(p.city, p.x, p.y, PLAYER.radius);
     if (hit) {
       p.x += hit.nx * hit.depth;
@@ -69,6 +75,8 @@ export function enterCar(p, cars) {
     best.driver = 'player';
     p.inCar = best;
     // Carjacking heat: stealing a patrol car raises the wanted floor to 2.
+    // The trailing `Math.max(p.wanted, 0)` keeps the wanted level clamped
+    // into the valid 0..5 band after the enter action.
     if (best.kind === 'patrol' && p.wanted < 2) p.wanted = Math.max(p.wanted, 2);
     p.wanted = Math.max(p.wanted, 0);
   }
@@ -91,6 +99,7 @@ export function exitCar(p) {
 
 // -------------------------------------------------------- health & upkeep
 
+/** Apply damage; starts the regen delay and can kill the player. */
 export function damagePlayer(p, amount) {
   if (p.dead) return;
   p.health -= amount;
@@ -112,7 +121,7 @@ export function updatePlayer(p, dt) {
     p.health = Math.min(p.maxHealth, p.health + PLAYER.regenRate * dt);
   }
   // Wanted heat cools slowly when not regenerated elsewhere (police.js drives
-  // the real decay; this only caps the value).
+  // the real decay; this only caps the value into the 0..5 band).
   p.wanted = Math.max(0, Math.min(5, p.wanted));
 }
 
@@ -125,7 +134,8 @@ export function playerSave(p) {
 
 /**
  * Restore from a save blob. Every field is validated independently so a
- * partial / corrupted save degrades gracefully; health never restores below 1.
+ * partial / corrupted save degrades gracefully; health never restores below 1
+ * (a dead-on-load player would soft-lock the game) and wanted stays in band.
  */
 export function playerLoad(p, data) {
   if (!data) return;

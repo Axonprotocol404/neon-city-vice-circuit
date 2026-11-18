@@ -5,9 +5,13 @@
 // with speed, light lateral drift (grip), handbrake drifting, building bounce
 // and damage. Four kinds of vehicles with distinct tuning (see CAR.types).
 //
-// Every car carries both a signed scalar `speed` (along its heading) and a
-// free 2D velocity (vx, vy). The gap between the two is what produces drift:
-// grip blends the velocity vector toward the heading every step.
+// MOTION MODEL: every car carries both a signed scalar `speed` (along its
+// heading) and a free 2D velocity (vx, vy). The gap between the two is what
+// produces drift: grip blends the velocity vector toward the heading every
+// step, so lower grip = longer, more visible slides.
+//
+// Units: speeds in px/s, accelerations in px/s^2, angles in radians. All
+// constants come from CAR in config.js — nothing is retuned here per car.
 import { CAR, WORLD } from './config.js';
 
 // Monotonic id source; lets other modules tag/compare cars cheaply.
@@ -15,6 +19,10 @@ let nextId = 1;
 
 // ------------------------------------------------------------- construction
 
+/**
+ * Create a car of `kind` at (x, y) with `angle` heading. `driver` is one of
+ * 'player' | 'traffic' | 'police' | null; `city` is required for physics.
+ */
 export function createCar(kind, x, y, angle, color, driver = null, city = null) {
   const t = CAR.types[kind];
   return {
@@ -44,7 +52,10 @@ export function carKinds() {
 
 // ---------------------------------------------------------------- physics
 
-/** Step the physics for one car. Returns an impact object when it hit a building. */
+/**
+ * Step the physics for one car for one fixed step. Returns an impact object
+ * {nx, ny, speed} when the car hit a building this step, else null.
+ */
 export function updateCar(c, dt) {
   // Wrecks keep sliding and bleeding off speed, but take no input at all.
   if (c.wrecked) {
@@ -59,12 +70,13 @@ export function updateCar(c, dt) {
   // Handbrake drops effective grip so the tail steps out under steering.
   const grip = handbraking ? t.grip * CAR.handbrakeGrip : t.grip;
 
-  // -- Forward dynamics
+  // -- Forward dynamics ------------------------------------------------------
   if (c.throttle > 0) {
     c.speed += c.accel * c.throttle * dt;
   } else {
     // Coasting drag: proportional decay plus a small constant roll-off so the
-    // car actually comes to rest instead of creeping forever.
+    // car actually comes to rest instead of creeping forever. The 4 px/s
+    // snap threshold kills residual jitter near zero.
     c.speed -= Math.sign(c.speed) * CAR.drag * Math.abs(c.speed) * dt + Math.sign(c.speed) * 20 * dt;
     if (Math.abs(c.speed) < 4) c.speed = 0;
   }
@@ -88,20 +100,23 @@ export function updateCar(c, dt) {
   const lx = c.vx * (1 - grip) + vx * grip;
   const ly = c.vy * (1 - grip) + vy * grip;
   c.vx = lx; c.vy = ly;
-  // Skid marks only while both sliding hard and actually moving fast. Note the
-  // mix of blended-x with heading-y is intentional and kept as-is.
+  // Skid marks only while both sliding hard and actually moving fast. NOTE:
+  // `Math.hypot(lx, vy)` mixes blended-x with heading-y — that mismatch is
+  // intentional (it measures slide asymmetry) and is kept as-is.
   const slide = Math.hypot(lx, vy) - Math.abs(c.speed);
   c.skidTimer = Math.abs(slide) > 40 && Math.abs(c.speed) > 80 ? 0.12 : Math.max(0, c.skidTimer - dt);
 
   c.x += lx * dt;
   c.y += ly * dt;
 
-  // -- Building collisions: bounce off the pushed-out normal, lose speed, take
-  // damage. The loop runs at most twice (i < 2) but unconditionally breaks
-  // after the first resolved impact, so only one bounce happens per step.
+  // -- Building collisions ---------------------------------------------------
+  // Bounce off the pushed-out normal, lose speed, take damage. The loop runs
+  // at most twice (i < 2) but unconditionally breaks after the first resolved
+  // impact, so only one bounce happens per step.
   let impact = null;
   for (let i = 0; i < 2; i++) {
     const corners = carCorners(c);
+    // Find the deepest building penetration among the four corners.
     let deepest = null, depthMax = 0;
     for (const pt of corners) {
       const hit = rectNormal(c.city, pt.x, pt.y, c.w / 2 + c.l / 4);
@@ -112,14 +127,14 @@ export function updateCar(c, dt) {
     // Depenetrate first, then reflect the velocity about the surface normal.
     c.x += deepest.nx * deepest.depth;
     c.y += deepest.ny * deepest.depth;
-    // Reflect velocity about the normal, damped.
+    // Reflect velocity about the normal, damped by CAR.bounce.
     const dot = c.vx * deepest.nx + c.vy * deepest.ny;
     c.vx = (c.vx - 2 * dot * deepest.nx) * CAR.bounce;
     c.vy = (c.vy - 2 * dot * deepest.ny) * CAR.bounce;
     c.speed = Math.hypot(c.vx, c.vy) * Math.sign(c.speed || 1) * CAR.bounce;
     // Nudge the nose away from the wall so the car does not grind along it.
     c.angle += (deepest.nx * Math.sin(c.angle) + deepest.ny * -Math.cos(c.angle)) * 0.08;
-    // Only hard hits above the threshold cost hp.
+    // Only hard hits above the threshold cost hp (soft scrapes are free).
     if (speed > 180) {
       c.hp -= CAR.damageBounce;
       if (c.hp <= 0) wreckCar(c);
@@ -181,7 +196,7 @@ export function wreckCar(c) {
   c.speed = 0; c.vx = 0; c.vy = 0;
   if (c.driver === 'player') {
     // The player is ejected on foot beside the wreck; main.js handles the
-    // actual state change via wasPlayerInCar.
+    // actual state change via wasPlayerInCar — nothing to do here.
   }
 }
 
@@ -199,7 +214,7 @@ export function bounceCars(a, b) {
   const dx = b.x - a.x, dy = b.y - a.y;
   const d = Math.hypot(dx, dy) || 1; // guard: perfectly stacked cars
   const nx = dx / d, ny = dy / d;
-  const push = 2;
+  const push = 2;                   // px of mutual separation per step
   a.x -= nx * push; a.y -= ny * push;
   b.x += nx * push; b.y += ny * push;
   // Only a genuinely fast closing pair (combined speed) takes damage.

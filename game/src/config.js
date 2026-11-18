@@ -1,13 +1,17 @@
 // =============================================================================
 // Neon City: Vice Circuit — central configuration
 // =============================================================================
-// Every tuning number, threshold and colour in the game lives in this single
-// module. Nothing else in the codebase should hardcode a magic number that
-// could plausibly be tweaked: AI speeds, weapon stats, spawn caps, camera
-// smoothing, palette — it all comes from here.
+// This module is the single source of truth for every tunable value in the
+// game. Nothing else in the codebase may hardcode a "magic" number that could
+// plausibly be tweaked: AI speeds, weapon stats, spawn caps, camera smoothing,
+// the palette — it all lives here, grouped per subsystem.
 //
-// The world is a fixed 3200x3200 top-down city. The camera follows the player
+// World model: a fixed 3200x3200 top-down city. The camera follows the player
 // and zooms with speed, so none of these values depend on screen size.
+//
+// TUNING NOTE: any change here is a gameplay change. Values were balanced
+// against the fixed 60 Hz simulation step (see STEP below) — rescaling one
+// without the others will break the feel.
 
 // ---------------------------------------------------------------- world size
 // Fixed square world; roads are laid out on a grid across both axes.
@@ -17,12 +21,19 @@ export const WORLD = { width: 3200, height: 3200 };
  * The simulation's fixed step, in seconds.
  * Invariant: all update*() modules are stepped at exactly 60 Hz regardless
  * of the display's refresh rate, so every dt-dependent constant below is
- * calibrated for this step and must not be rescaled.
+ * calibrated for this step and must NOT be rescaled (e.g. if STEP changes).
  */
 export const STEP = 1 / 60;
 
 // ---------------------------------------------------------------- city grid
 // Geometry of the road grid and the blocks between roads.
+//   cell        — distance between road centre-lines (grid pitch)
+//   roadW       — full width of a road (asphalt only, sidewalks excluded)
+//   laneOffset  — lane centre offset from the road centre-line
+//   sidewalk    — pavement band on each side of the asphalt
+//   parkChance  — chance a block is a park instead of buildings
+//   buildingGap — spacing between buildings inside a block
+//   minBuilding — smallest building footprint (below this, skip the lot)
 export const CITY = {
   cell: 400,            // distance between road centre-lines
   roadW: 90,            // full width of a road (asphalt only)
@@ -39,8 +50,9 @@ export const CITY = {
 };
 
 // ------------------------------------------------------------------ palette
-// Flat colours plus the neon accents; wall / wallTop pair up per building
-// style index so body and fake-3D roof always match.
+// Flat colours plus the neon accents. The wall / wallTop arrays pair up per
+// building style index so a building's body and its fake-3D roof always
+// match — keep both arrays the same length if you ever add a style.
 export const PALETTE = {
   asphalt: '#14161d',
   roadLine: '#3a3f52',
@@ -71,10 +83,14 @@ export const PALETTE = {
 };
 
 // --------------------------------------------------------------- font stack
+// Single UI font used by the HUD; canvas text drawing imports this string.
 export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 
 // ------------------------------------------------------------------- player
 // On-foot movement and pistol stats.
+//   regenDelay — seconds after taking damage before slow regen kicks in
+//   regenRate  — hp per second once regenerating
+//   bullet*    — pistol projectile: speed (px/s), damage and lifetime (s)
 export const PLAYER = {
   speed: 175,           // on-foot px/s
   radius: 9,
@@ -95,6 +111,14 @@ export const PLAYER = {
 //   turn  — rad/s at full steer
 //   w/l   — footprint (width / length in px)
 // hp is shared by collisions and bullets; reaching 0 wrecks the car.
+// Global fields:
+//   bounce        — speed kept after hitting a wall
+//   damageBounce  — hp lost per hard wall hit
+//   drag          — per-second speed decay when coasting
+//   brakeForce    — px/s^2 applied by the brake
+//   handbrakeGrip — grip multiplier with Space held (this is the drift!)
+//   enterRange    — how close on foot to enter a car
+//   zoom*         — camera zoom while driving (base vs top speed)
 export const CAR = {
   types: {
     sedan:  { w: 40, l: 76, speed: 330, accel: 300, grip: 0.90, turn: 2.4, hp: 100 },
@@ -114,6 +138,8 @@ export const CAR = {
 
 // ------------------------------------------------------------------ traffic
 // Ambient AI cars cruising the road grid.
+//   turnChance  — chance of turning at an intersection
+//   avoidAhead  — px of look-ahead for basic collision avoidance
 export const TRAFFIC = {
   count: 26,
   speed: 150,
@@ -122,7 +148,8 @@ export const TRAFFIC = {
 };
 
 // --------------------------------------------------------------------- peds
-// Ambient pedestrians, including their panic response.
+// Ambient pedestrians, including their panic (flee) response.
+//   fleeSpeed / fleeTime — how fast and how long they run when panicked.
 export const PED = {
   count: 44,
   speed: 55,
@@ -133,9 +160,12 @@ export const PED = {
 };
 
 // ------------------------------------------------------------------- police
-// Escalation table and response tuning. maxUnits maps wanted level 1..5 to
-// the number of simultaneous chase cars; roadblockWanted / heliWanted are the
-// thresholds where those heavier responses kick in.
+// Escalation table and response tuning.
+//   maxUnits — maps wanted level 1..5 to the number of simultaneous chase
+//              cars; this is the core difficulty curve.
+//   roadblockWanted / heliWanted — thresholds where the heavier responses
+//              kick in on top of the chase cars.
+//   evadeTime — seconds out of sight needed to drop a wanted star.
 export const POLICE = {
   maxUnits: { 1: 1, 2: 2, 3: 3, 4: 4, 5: 6 },
   spawnDelay: 4,
@@ -150,18 +180,22 @@ export const POLICE = {
 };
 
 // ----------------------------------------------------------------- missions
+//   reward — payout per completed mission, indexed by mission slot order.
 export const MISSION = {
   markerRadius: 40,
   reward: [300, 500, 700, 1200, 1800, 3000],
 };
 
 // ------------------------------------------------------------------- combat
+// Cross-cutting combat rules that belong to neither the player nor the AI.
 export const COMBAT = {
   pedFearRadius: 260,   // peds panic when shots land this close
 };
 
 // --------------------------------------------------------------------- misc
 // Persistence and camera smoothing.
+//   SAVE_INTERVAL — seconds between autosaves; SAVE_KEY is the localStorage
+//   slot (changing it orphans existing saves).
 export const SAVE_KEY = 'neon-city-vice-circuit.save';
 export const SAVE_INTERVAL = 5; // seconds between autosaves
 export const CAMERA = { lerp: 4.5, zoomLerp: 2.2 };

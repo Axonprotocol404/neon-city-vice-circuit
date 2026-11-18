@@ -9,11 +9,15 @@
 //   1-2  patrol cars chase (cap scales with level)
 //   3+   patrols open fire, roadblocks spawn ahead of the player
 //   4+   helicopter joins and counts as persistent line-of-sight
+//
+// The module communicates with main.js purely through the `events` array:
+// policeShoot / evade / heliIn / heliGone / copDown event objects.
 import { CAR, CITY, PALETTE, POLICE, WORLD } from './config.js';
 import { createCar, damageCar } from './car.js';
 
 // ------------------------------------------------------------ state factory
 
+/** Fresh police-response state bound to a city. */
 export function createPolice(city) {
   return {
     city,

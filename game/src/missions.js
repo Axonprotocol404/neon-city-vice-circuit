@@ -1,7 +1,18 @@
-// Mission chain for "Neon City: Vice Circuit". Six chained story missions:
-// courier run, chase, delivery, heist, escape, and a final showdown. Each has
-// an objective position, marker on the minimap, reward money and short
-// text-dialog lines shown in the HUD.
+// =============================================================================
+// Neon City: Vice Circuit — mission chain
+// =============================================================================
+// Six chained story missions: courier run, chase, delivery, heist, escape, and
+// a final showdown. Each has an objective position, marker on the minimap,
+// reward money and short text-dialog lines shown in the HUD.
+//
+// Mission kinds understood by main.js:
+//   'reach'   — completes when the player gets within MISSION.markerRadius
+//   'survive' — completes when the timer runs out with the player alive
+// (the `time` field is a countdown for 'reach' and a survival target for
+// 'survive' — see updateMissions).
+//
+// All characters and places are original; the SCRIPT block below is story
+// content, not tuning — treat its text as immutable.
 import { CITY, MISSION, WORLD } from './config.js';
 
 /** Story text (all original characters and places). */
@@ -120,6 +131,7 @@ export function startMission(m, player) {
   m.dialogQueue = def.dialog.slice();
   m.dialogLine = 0;
   m.dialogTimer = DIALOG_LINE_SECONDS;
+  // Some missions start with scripted heat (chase/escape scenarios).
   if (def.raiseWanted) player.wanted = Math.max(player.wanted, def.raiseWanted);
   return def;
 }
@@ -171,6 +183,7 @@ function completeMission(m, player, def, events) {
   events.push({ type: 'missionComplete', id: def.id, reward: def.reward });
   m.index += 1;
   if (m.index >= m.list.length) {
+    // Story finished: play the outro dialog and let main.js celebrate.
     m.dialogQueue = SCRIPT.outro.slice();
     m.dialogTimer = 6;
     events.push({ type: 'storyEnd' });
@@ -200,5 +213,6 @@ export function missionsLoad(m, data) {
   if (!data) return;
   if (Number.isInteger(data.index)) m.index = Math.max(0, Math.min(m.list.length, data.index));
   if (Array.isArray(data.completed)) m.completed = data.completed.slice();
+  // Restored missions always start idle so the player re-triggers them.
   m.state = 'idle';
 }

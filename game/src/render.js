@@ -1,7 +1,18 @@
-// Renderer: top-down city with fake building height (roofs offset from their
-// base toward the screen), cars with bodies/windows/headlights, pedestrians,
-// bullets, particles, skid marks, the helicopter's spotlight cone and a smooth
-// follow camera that zooms out at speed. Also draws the title/game-over screens.
+// =============================================================================
+// Neon City: Vice Circuit — renderer (canvas 2D)
+// =============================================================================
+// Top-down city with fake building height (roofs offset from their base toward
+// the screen), cars with bodies/windows/headlights, pedestrians, bullets,
+// particles, skid marks, the helicopter's spotlight cone and a smooth follow
+// camera that zooms out at speed. Also draws the title/game-over screens.
+//
+// LAYER ORDER (painter's algorithm, see drawWorld):
+//   ground -> skids -> mission marker -> buildings -> cars -> peds -> player
+//   -> bullets -> sparks -> particles -> heli  (+ screen-space vignette last)
+//
+// COORDINATES: draw() works in CSS pixels; the backing store is sized by
+// devicePixelRatio (capped at 2) and the DPR transform is applied up front.
+// All world-space drawing is culled against the camera viewport plus CULL_PAD.
 import { CAMERA, CAR, CITY, FONT, PALETTE, WORLD } from './config.js';
 
 export const SCREEN_TITLE = 'title';
@@ -66,6 +77,7 @@ export function createRenderer(canvas) {
 // particles, heli), finished with a screen-space vignette.
 function drawWorld(ctx, state, W, H, time) {
   const cam = state.camera;
+  // Screen shake decays in main.js; here it is a random pixel offset.
   const shake = state.shake > 0 ? (Math.random() - 0.5) * state.shake : 0;
   ctx.save();
   ctx.translate(W / 2 + shake, H / 2 + shake);
@@ -131,7 +143,7 @@ function drawGround(ctx, city, view) {
     ctx.fill();
   }
 
-  // Lane dashes
+  // Lane dashes: one dashed path for every visible road, both axes.
   ctx.strokeStyle = PALETTE.roadLine;
   ctx.lineWidth = 3;
   ctx.setLineDash([18, 26]);
@@ -198,7 +210,8 @@ function drawBuildings(ctx, city, view, time) {
     ctx.lineWidth = 2;
     ctx.strokeRect(b.x, b.y - b.height, b.w, b.h);
 
-    // Window lights on the roof face, gently flickering.
+    // Window lights on the roof face, gently flickering. The deterministic
+    // `seed` expression decides which windows exist per building.
     ctx.fillStyle = 'rgba(255,214,10,0.6)';
     const cols = Math.floor(b.w / 24);
     const rows = Math.floor(b.h / 24);
@@ -245,6 +258,7 @@ function drawMarker(ctx, state, time) {
   ctx.arc(def.pos.x, def.pos.y, 34 * pulse, 0, Math.PI * 2);
   ctx.fill();
   ctx.globalAlpha = 1;
+  // Vertical glow beam above the marker, fading to transparent at the top.
   const beam = ctx.createLinearGradient(def.pos.x, def.pos.y, def.pos.x, def.pos.y - 160);
   beam.addColorStop(0, 'rgba(255,214,10,0.35)');
   beam.addColorStop(1, 'rgba(255,214,10,0)');
@@ -290,6 +304,7 @@ export function drawCar(ctx, c, time, isPlayer) {
   ctx.fill();
 
   if (!c.wrecked) {
+    // Headlights (front) and taillights (rear).
     ctx.fillStyle = 'rgba(255,246,200,0.9)';
     ctx.fillRect(l / 2 - 4, -w / 2 + 4, 4, 7);
     ctx.fillRect(l / 2 - 4, w / 2 - 11, 4, 7);
@@ -299,6 +314,7 @@ export function drawCar(ctx, c, time, isPlayer) {
   }
 
   if (c.kind === 'patrol' && !c.wrecked) {
+    // Police livery: side stripe + alternating red/blue light bar with glow.
     ctx.fillStyle = PALETTE.policeStripe;
     ctx.fillRect(-l * 0.3, -w / 2, l * 0.16, w);
     const blink = Math.sin(time * 14) > 0;
@@ -314,6 +330,7 @@ export function drawCar(ctx, c, time, isPlayer) {
   }
 
   if (isPlayer) {
+    // Faint ring identifying the player's current ride.
     ctx.strokeStyle = PALETTE.player;
     ctx.globalAlpha = 0.55;
     ctx.lineWidth = 2;
@@ -337,6 +354,7 @@ function drawPlayerOnFoot(ctx, state) {
   ctx.ellipse(2, 4, 10, 7, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.rotate(p.angle + Math.PI / 2);
+  // Hurt flash: tint the body pink while hurtTimer is live.
   const hurt = p.hurtTimer > 0 ? '#ff8a8a' : PALETTE.player;
   ctx.fillStyle = hurt;
   roundRect(ctx, -5, -7, 10, 14, 4);
@@ -345,6 +363,7 @@ function drawPlayerOnFoot(ctx, state) {
   ctx.beginPath();
   ctx.arc(0, -3, 3.6, 0, Math.PI * 2);
   ctx.fill();
+  // Arms swing opposite each other while walking.
   const swing = Math.sin(p.walkAnim) * 3;
   ctx.strokeStyle = hurt;
   ctx.lineWidth = 2;
@@ -378,6 +397,7 @@ function drawPeds(ctx, peds, view) {
     ctx.save();
     ctx.translate(p.x, p.y);
     if (p.dead) {
+      // Corpse: alpha fades with the cleanup timer (floor 0.15).
       ctx.globalAlpha = Math.min(1, Math.max(0.15, p.deadTimer / 4));
       ctx.fillStyle = '#4a4350';
       ctx.beginPath();
@@ -389,6 +409,7 @@ function drawPeds(ctx, peds, view) {
     ctx.rotate(p.angle + Math.PI / 2);
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.fillRect(-4, -3, 8, 9);
+    // Panicked peds run with a pinker tint.
     ctx.fillStyle = p.flee > 0 ? '#f0b0b0' : PALETTE.ped;
     roundRect(ctx, -3.5, -6, 7, 12, 3);
     ctx.fill();
@@ -460,6 +481,7 @@ function drawHeli(ctx, police, time) {
   ctx.beginPath();
   ctx.arc(0, 0, 12, 0, Math.PI * 2);
   ctx.fill();
+  // Cross of rotor blades.
   ctx.strokeStyle = '#8fa4c8';
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -468,6 +490,7 @@ function drawHeli(ctx, police, time) {
   ctx.moveTo(0, -24);
   ctx.lineTo(0, 24);
   ctx.stroke();
+  // Spinning rotor blur arc.
   ctx.strokeStyle = 'rgba(200,220,255,0.5)';
   const rotor = 18 + Math.sin(time * 20) * 3;
   ctx.beginPath();
@@ -491,6 +514,7 @@ function drawVignette(ctx, W, H) {
 function drawTitle(ctx, state, W, H, time) {
   ctx.fillStyle = '#0a0c14';
   ctx.fillRect(0, 0, W, H);
+  // Perspective floor: horizontal lines that bunch toward the horizon.
   for (let i = 0; i < 14; i++) {
     const y = H * 0.55 + i * i * 3.2;
     if (y > H) break;
@@ -501,6 +525,7 @@ function drawTitle(ctx, state, W, H, time) {
     ctx.lineTo(W, y);
     ctx.stroke();
   }
+  // Converging vertical lines for the same fake perspective.
   for (let i = -10; i <= 10; i++) {
     ctx.strokeStyle = 'rgba(0,229,255,0.16)';
     ctx.beginPath();
@@ -511,6 +536,7 @@ function drawTitle(ctx, state, W, H, time) {
 
   ctx.textAlign = 'center';
   ctx.save();
+  // Glowing two-tone logo (pink over cyan) via canvas shadow blur.
   ctx.shadowColor = '#ff2d78';
   ctx.shadowBlur = 30;
   ctx.fillStyle = '#ff2d78';
@@ -526,6 +552,7 @@ function drawTitle(ctx, state, W, H, time) {
   ctx.font = `16px ${FONT}`;
   ctx.fillText('A top-down neon-noir crime sandbox', W / 2, H * 0.30 + Math.min(100, W * 0.10));
 
+  // Blinking "press start" prompt.
   if (Math.sin(time * 3) > -0.2) {
     ctx.fillStyle = PALETTE.marker;
     ctx.font = `bold 20px ${FONT}`;
@@ -597,6 +624,7 @@ export function updateCamera(cam, target, car, dt) {
   const leadRatio = car ? Math.min(1, Math.abs(car.speed) / 300) : 0;
   const tx = target.x + (car ? Math.cos(car.angle) * lead * leadRatio : 0);
   const ty = target.y + (car ? Math.sin(car.angle) * lead * leadRatio : 0);
+  // Exponential smoothing is framerate-independent: k saturates to 1 as dt grows.
   const k = 1 - Math.exp(-CAMERA.lerp * dt);
   cam.x += (tx - cam.x) * k;
   cam.y += (ty - cam.y) * k;

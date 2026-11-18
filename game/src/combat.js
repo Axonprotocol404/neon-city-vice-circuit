@@ -1,6 +1,16 @@
-// Combat: the player fires toward the mouse cursor (click), bullets travel,
-// hit peds / police / traffic / buildings, and every impact feeds back into
-// health, wanted level and panic.
+// =============================================================================
+// Neon City: Vice Circuit — combat (bullets, hits & feedback)
+// =============================================================================
+// The player fires toward the mouse cursor (click), bullets travel, hit peds /
+// police / traffic / buildings, and every impact feeds back into health,
+// wanted level and panic.
+//
+// Bullet ownership matters: `from: 'player'` bullets hurt peds, police and
+// traffic (and escalate the wanted level); `from: 'police'` bullets hurt the
+// player and the car they drive. Sparks are purely visual.
+//
+// TUNNELING NOTE: bullets are fast (900 px/s), so each bullet advances in
+// BULLET_SUBSTEPS sub-steps per frame to avoid skipping over thin targets.
 import { COMBAT, PLAYER } from './config.js';
 import { damageCar } from './car.js';
 import { damagePed, scarePeds } from './peds.js';
@@ -22,7 +32,7 @@ export function playerShoot(combat, player, aimX, aimY, events) {
   const dy = aimY - player.y;
   const dist = Math.hypot(dx, dy) || 1;
   const angle = Math.atan2(dy, dx);
-  // Muzzle offset a bit in front of the body (or car nose).
+  // Muzzle offset a bit in front of the body (or car nose when driving).
   const muzzle = player.inCar
     ? {
         x: player.inCar.x + Math.cos(player.inCar.angle) * (player.inCar.l / 2),
@@ -39,11 +49,12 @@ export function playerShoot(combat, player, aimX, aimY, events) {
     damage: PLAYER.bulletDamage,
   });
   events.push({ type: 'shot', x: muzzle.x, y: muzzle.y, angle });
+  // Nearby peds panic at the muzzle flash.
   scarePeds(combat.peds ?? [], muzzle.x, muzzle.y);
   return true;
 }
 
-/** A police bullet spawned by police.js events. */
+/** A police bullet spawned by police.js events (slower than player rounds). */
 export function policeShoot(combat, x, y, angle, damage) {
   combat.bullets.push({
     x,
@@ -99,6 +110,7 @@ export function updateCombat(combat, player, peds, trafficCars, police, city, dt
             spark(combat, bullet.x, bullet.y, '#e5534b');
             scarePeds(peds, p.x, p.y);
             events.push({ type: 'pedHit', killed });
+            // Heat escalation: a kill raises the floor higher than a wound.
             player.wanted = Math.min(5, Math.max(player.wanted, killed ? 3 : 2));
             consumed = true;
             break;
@@ -136,6 +148,7 @@ export function updateCombat(combat, player, peds, trafficCars, police, city, dt
         const hitRadius = player.inCar ? player.inCar.l * 0.38 : 10;
         if (!player.dead && Math.hypot(target.x - bullet.x, target.y - bullet.y) < hitRadius) {
           if (player.inCar) {
+            // Cars absorb fire at a discount (80% of the bullet damage).
             damageCar(player.inCar, bullet.damage * 0.8);
           } else {
             events.push({ type: 'playerHurt', damage: bullet.damage });
@@ -151,7 +164,7 @@ export function updateCombat(combat, player, peds, trafficCars, police, city, dt
     if (consumed || bullet.life <= 0) combat.bullets.splice(i, 1);
   }
 
-  // Sparks (visual only).
+  // Sparks (visual only): move, damp, expire.
   for (let i = combat.sparks.length - 1; i >= 0; i--) {
     const sparkDot = combat.sparks[i];
     sparkDot.x += sparkDot.vx * dt;

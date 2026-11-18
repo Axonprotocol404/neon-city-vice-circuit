@@ -1,6 +1,13 @@
-// Neon City: Vice Circuit — boot, fixed-timestep loop, input, save/load and
-// screens. Title -> play -> gameover/win. ?seed=N fixes the city; ?shot=start|
+// =============================================================================
+// Neon City: Vice Circuit — boot, fixed-timestep loop, input, save/load
+// =============================================================================
+// Screens: title -> play -> gameover/win. ?seed=N fixes the city; ?shot=start|
 // play|city|mission stages a deterministic scene for screenshots.
+//
+// LOOP SHAPE: a fixed-timestep accumulator runs stepWorld() at exactly 60 Hz
+// (STEP) regardless of display refresh; rendering happens once per animation
+// frame. Systems push typed events into `events`, which handleEvents() maps
+// to audio, HUD flashes, particles, shake, mission chaining and transitions.
 import { MONEY_START, PALETTE, SAVE_INTERVAL, SAVE_KEY, STEP } from './config.js';
 import { createCity, createRandom } from './city.js';
 import { createPlayer, damagePlayer, enterCar, exitCar, playerLoad, playerSave, updatePlayer, walkPlayer } from './player.js';
